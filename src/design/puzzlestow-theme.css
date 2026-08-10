@@ -1,0 +1,39 @@
+/* Shared landing reference layer. Deliberately styling-only: page state and interactions stay in App.tsx. */
+:root {
+  --ps-grid-line: rgba(31, 167, 163, 0.055);
+  --ps-panel-line: rgba(31, 167, 163, 0.14);
+  --ps-panel: #22262f;
+  --ps-panel-deep: #1a1e25;
+  --ps-text: #f5f7fa;
+  --ps-muted: #a3a9b5;
+  --ps-dim: #6b7280;
+  --ps-cyan: #1fa7a3;
+  --ps-blue: #1f4f82;
+  --ps-green: #3bb273;
+  --ps-radius: 0;
+  --ps-ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+body {
+  background-color: var(--ps-panel-deep);
+  background-image:
+    linear-gradient(var(--ps-grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--ps-grid-line) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+button, a, input, textarea, select { border-radius: var(--ps-radius) !important; }
+button, a { transition: color 150ms var(--ps-ease), background-color 150ms var(--ps-ease), border-color 150ms var(--ps-ease), transform 150ms var(--ps-ease); }
+button:hover:not(:disabled), a:hover { transform: translateY(-1px); }
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px solid var(--ps-cyan); outline-offset: 3px; }
+
+/* The reference uses restrained panels rather than white cards. */
+[class*="bg-white"], [class*="bg-gray"] { background-color: var(--ps-panel) !important; }
+[class*="border-gray"], [class*="border-white"] { border-color: var(--ps-panel-line) !important; }
+
+/* Preserve the app's SVG figure language, but bring it into the blueprint system. */
+svg rect { rx: 0; }
+
+@media (max-width: 768px) {
+  body { background-size: 20px 20px; }
+}
