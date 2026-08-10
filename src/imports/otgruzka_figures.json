@@ -1,0 +1,1419 @@
+{
+  "version": "1.0",
+  "source": "Transformed 1:1 from otgruzka_figures.json (manually confirmed, dots_confidence=confirmed on all 27 pieces). No geometry regenerated.",
+  "coordinate_system": "container_15x11_0based_A0",
+  "cell_order_note": "cells and bbox.min/bbox.max are [row, col] pairs, 0-indexed, LOCAL to each piece's own bounding box (top-left = [0,0] at 0° orientation) — NOT container-absolute coordinates. This matches the original otgruzka_figures.json convention. Container-absolute placement (col 0-14, row A-K / 0-10) is computed by the engine at placement time, not stored here.",
+  "container": {
+    "cols": 15,
+    "rows": 11
+  },
+  "figure_count": 27,
+  "figures": [
+    {
+      "id": 1,
+      "cells_count": 1,
+      "cells": [
+        [
+          0,
+          0
+        ]
+      ],
+      "bbox": {
+        "min": [
+          0,
+          0
+        ],
+        "max": [
+          0,
+          0
+        ]
+      },
+      "reference_dots": [
+        [
+          0,
+          0
+        ]
+      ],
+      "rotations_allowed": [
+        0,
+        90,
+        180,
+        270
+      ],
+      "mirror_is_separate_piece": true,
+      "dots_confidence": "confirmed"
+    },
+    {
+      "id": 2,
+      "cells_count": 2,
+      "cells": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "bbox": {
+        "min": [
+          0,
+          0
+        ],
+        "max": [
+          0,
+          1
+        ]
+      },
+      "reference_dots": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      "rotations_allowed": [
+        0,
+        90,
+        180,
+        270
+      ],
+      "mirror_is_separate_piece": true,
+      "dots_confidence": "confirmed"
+    },
+    {
+      "id": 3,
+      "cells_count": 3,
+      "cells": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          2
+        ]
+      ],
+      "bbox": {
+        "min": [
+          0,
+          0
+        ],
+        "max": [
+          0,
+          2
+        ]
+      },
+      "reference_dots": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          2
+        ]
+      ],
+      "rotations_allowed": [
+        0,
+        90,
+        180,
+        270
+      ],
+      "mirror_is_separate_piece": true,
+      "dots_confidence": "confirmed"
+    },
+    {
+      "id": 4,
+      "cells_count": 4,
+      "cells": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          0,
+          3
+        ]
+      ],
+      "bbox": {
+        "min": [
+          0,
+          0
+        ],
+        "max": [
+          0,
+          3
+        ]
+      },
+      "reference_dots": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          3
+        ]
+      ],
+      "rotations_allowed": [
+        0,
+        90,
+        180,
+        270
+      ],
+      "mirror_is_separate_piece": true,
+      "dots_confidence": "confirmed"
+    },
+    {
+      "id": 5,
+      "cells_count": 5,
+      "cells": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          0,
+          3
+        ],
+        [
+          0,
+          4
+        ]
+      ],
+      "bbox": {
+        "min": [
+          0,
+          0
+        ],
+        "max": [
+          0,
+          4
+        ]
+      },
+      "reference_dots": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          4
+        ]
+      ],
+      "rotations_allowed": [
+        0,
+        90,
+        180,
+        270
+      ],
+      "mirror_is_separate_piece": true,
+      "dots_confidence": "confirmed"
+    },
+    {
+      "id": 6,
+      "cells_count": 3,
+      "cells": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          1
+        ]
+      ],
+      "bbox": {
+        "min": [
+          0,
+          0
+        ],
+        "max": [
+          1,
+          1
+        ]
+      },
+      "reference_dots": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          1
+        ]
+      ],
+      "rotations_allowed": [
+        0,
+        90,
+        180,
+        270
+      ],
+      "mirror_is_separate_piece": true,
+      "dots_confidence": "confirmed"
+    },
+    {
+      "id": 7,
+      "cells_count": 4,
+      "cells": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          1
+        ]
+      ],
+      "bbox": {
+        "min": [
+          0,
+          0
+        ],
+        "max": [
+          1,
+          1
+        ]
+      },
+      "reference_dots": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          1
+        ]
+      ],
+      "rotations_allowed": [
+        0,
+        90,
+        180,
+        270
+      ],
+      "mirror_is_separate_piece": true,
+      "dots_confidence": "confirmed"
+    },
+    {
+      "id": 8,
+      "cells_count": 4,
+      "cells": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          2,
+          1
+        ]
+      ],
+      "bbox": {
+        "min": [
+          0,
+          0
+        ],
+        "max": [
+          2,
+          1
+        ]
+      },
+      "reference_dots": [
+        [
+          0,
+          0
+        ],
+        [
+          2,
+          1
+        ]
+      ],
+      "rotations_allowed": [
+        0,
+        90,
+        180,
+        270
+      ],
+      "mirror_is_separate_piece": true,
+      "dots_confidence": "confirmed"
+    },
+    {
+      "id": 9,
+      "cells_count": 4,
+      "cells": [
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          1
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          2,
+          1
+        ]
+      ],
+      "bbox": {
+        "min": [
+          0,
+          0
+        ],
+        "max": [
+          2,
+          1
+        ]
+      },
+      "reference_dots": [
+        [
+          0,
+          1
+        ],
+        [
+          2,
+          0
+        ]
+      ],
+      "rotations_allowed": [
+        0,
+        90,
+        180,
+        270
+      ],
+      "mirror_is_separate_piece": true,
+      "dots_confidence": "confirmed"
+    },
+    {
+      "id": 10,
+      "cells_count": 5,
+      "cells": [
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          1
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          2,
+          1
+        ]
+      ],
+      "bbox": {
+        "min": [
+          0,
+          0
+        ],
+        "max": [
+          2,
+          2
+        ]
+      },
+      "reference_dots": [
+        [
+          0,
+          2
+        ],
+        [
+          2,
+          0
+        ]
+      ],
+      "rotations_allowed": [
+        0,
+        90,
+        180,
+        270
+      ],
+      "mirror_is_separate_piece": true,
+      "dots_confidence": "confirmed"
+    },
+    {
+      "id": 11,
+      "cells_count": 5,
+      "cells": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          1
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          2,
+          2
+        ]
+      ],
+      "bbox": {
+        "min": [
+          0,
+          0
+        ],
+        "max": [
+          2,
+          2
+        ]
+      },
+      "reference_dots": [
+        [
+          0,
+          0
+        ],
+        [
+          2,
+          2
+        ]
+      ],
+      "rotations_allowed": [
+        0,
+        90,
+        180,
+        270
+      ],
+      "mirror_is_separate_piece": true,
+      "dots_confidence": "confirmed"
+    },
+    {
+      "id": 12,
+      "cells_count": 4,
+      "cells": [
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          1
+        ]
+      ],
+      "bbox": {
+        "min": [
+          0,
+          0
+        ],
+        "max": [
+          1,
+          2
+        ]
+      },
+      "reference_dots": [
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "rotations_allowed": [
+        0,
+        90,
+        180,
+        270
+      ],
+      "mirror_is_separate_piece": true,
+      "dots_confidence": "confirmed"
+    },
+    {
+      "id": 13,
+      "cells_count": 4,
+      "cells": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          1
+        ],
+        [
+          1,
+          2
+        ]
+      ],
+      "bbox": {
+        "min": [
+          0,
+          0
+        ],
+        "max": [
+          1,
+          2
+        ]
+      },
+      "reference_dots": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          2
+        ]
+      ],
+      "rotations_allowed": [
+        0,
+        90,
+        180,
+        270
+      ],
+      "mirror_is_separate_piece": true,
+      "dots_confidence": "confirmed"
+    },
+    {
+      "id": 14,
+      "cells_count": 4,
+      "cells": [
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          1
+        ],
+        [
+          1,
+          2
+        ]
+      ],
+      "bbox": {
+        "min": [
+          0,
+          0
+        ],
+        "max": [
+          1,
+          2
+        ]
+      },
+      "reference_dots": [
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          2
+        ]
+      ],
+      "rotations_allowed": [
+        0,
+        90,
+        180,
+        270
+      ],
+      "mirror_is_separate_piece": true,
+      "dots_confidence": "confirmed"
+    },
+    {
+      "id": 15,
+      "cells_count": 5,
+      "cells": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          2
+        ]
+      ],
+      "bbox": {
+        "min": [
+          0,
+          0
+        ],
+        "max": [
+          1,
+          2
+        ]
+      },
+      "reference_dots": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          2
+        ]
+      ],
+      "rotations_allowed": [
+        0,
+        90,
+        180,
+        270
+      ],
+      "mirror_is_separate_piece": true,
+      "dots_confidence": "confirmed"
+    },
+    {
+      "id": 16,
+      "cells_count": 5,
+      "cells": [
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          1
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          2,
+          1
+        ]
+      ],
+      "bbox": {
+        "min": [
+          0,
+          0
+        ],
+        "max": [
+          2,
+          2
+        ]
+      },
+      "reference_dots": [
+        [
+          1,
+          1
+        ]
+      ],
+      "rotations_allowed": [
+        0,
+        90,
+        180,
+        270
+      ],
+      "mirror_is_separate_piece": true,
+      "dots_confidence": "confirmed"
+    },
+    {
+      "id": 17,
+      "cells_count": 5,
+      "cells": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          2,
+          0
+        ]
+      ],
+      "bbox": {
+        "min": [
+          0,
+          0
+        ],
+        "max": [
+          2,
+          2
+        ]
+      },
+      "reference_dots": [
+        [
+          0,
+          2
+        ],
+        [
+          2,
+          0
+        ]
+      ],
+      "rotations_allowed": [
+        0,
+        90,
+        180,
+        270
+      ],
+      "mirror_is_separate_piece": true,
+      "dots_confidence": "confirmed"
+    },
+    {
+      "id": 18,
+      "cells_count": 6,
+      "cells": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          1
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          2,
+          2
+        ]
+      ],
+      "bbox": {
+        "min": [
+          0,
+          0
+        ],
+        "max": [
+          2,
+          2
+        ]
+      },
+      "reference_dots": [
+        [
+          0,
+          0
+        ],
+        [
+          2,
+          2
+        ]
+      ],
+      "rotations_allowed": [
+        0,
+        90,
+        180,
+        270
+      ],
+      "mirror_is_separate_piece": true,
+      "dots_confidence": "confirmed"
+    },
+    {
+      "id": 19,
+      "cells_count": 6,
+      "cells": [
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          1
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          2,
+          2
+        ]
+      ],
+      "bbox": {
+        "min": [
+          0,
+          0
+        ],
+        "max": [
+          2,
+          2
+        ]
+      },
+      "reference_dots": [
+        [
+          0,
+          2
+        ],
+        [
+          2,
+          0
+        ]
+      ],
+      "rotations_allowed": [
+        0,
+        90,
+        180,
+        270
+      ],
+      "mirror_is_separate_piece": true,
+      "dots_confidence": "confirmed"
+    },
+    {
+      "id": 20,
+      "cells_count": 5,
+      "cells": [
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          1
+        ],
+        [
+          2,
+          0
+        ]
+      ],
+      "bbox": {
+        "min": [
+          0,
+          0
+        ],
+        "max": [
+          2,
+          2
+        ]
+      },
+      "reference_dots": [
+        [
+          0,
+          2
+        ],
+        [
+          2,
+          0
+        ]
+      ],
+      "rotations_allowed": [
+        0,
+        90,
+        180,
+        270
+      ],
+      "mirror_is_separate_piece": true,
+      "dots_confidence": "confirmed"
+    },
+    {
+      "id": 21,
+      "cells_count": 5,
+      "cells": [
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          1
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          2,
+          2
+        ]
+      ],
+      "bbox": {
+        "min": [
+          0,
+          0
+        ],
+        "max": [
+          2,
+          2
+        ]
+      },
+      "reference_dots": [
+        [
+          0,
+          1
+        ],
+        [
+          2,
+          2
+        ]
+      ],
+      "rotations_allowed": [
+        0,
+        90,
+        180,
+        270
+      ],
+      "mirror_is_separate_piece": true,
+      "dots_confidence": "confirmed"
+    },
+    {
+      "id": 22,
+      "cells_count": 5,
+      "cells": [
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          1
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          2,
+          0
+        ]
+      ],
+      "bbox": {
+        "min": [
+          0,
+          0
+        ],
+        "max": [
+          2,
+          2
+        ]
+      },
+      "reference_dots": [
+        [
+          0,
+          1
+        ],
+        [
+          2,
+          0
+        ]
+      ],
+      "rotations_allowed": [
+        0,
+        90,
+        180,
+        270
+      ],
+      "mirror_is_separate_piece": true,
+      "dots_confidence": "confirmed"
+    },
+    {
+      "id": 23,
+      "cells_count": 6,
+      "cells": [
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          1
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          2,
+          2
+        ]
+      ],
+      "bbox": {
+        "min": [
+          0,
+          0
+        ],
+        "max": [
+          2,
+          2
+        ]
+      },
+      "reference_dots": [
+        [
+          0,
+          1
+        ],
+        [
+          2,
+          2
+        ]
+      ],
+      "rotations_allowed": [
+        0,
+        90,
+        180,
+        270
+      ],
+      "mirror_is_separate_piece": true,
+      "dots_confidence": "confirmed"
+    },
+    {
+      "id": 24,
+      "cells_count": 5,
+      "cells": [
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          1
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          2,
+          2
+        ]
+      ],
+      "bbox": {
+        "min": [
+          0,
+          0
+        ],
+        "max": [
+          2,
+          2
+        ]
+      },
+      "reference_dots": [
+        [
+          0,
+          1
+        ],
+        [
+          2,
+          2
+        ]
+      ],
+      "rotations_allowed": [
+        0,
+        90,
+        180,
+        270
+      ],
+      "mirror_is_separate_piece": true,
+      "dots_confidence": "confirmed"
+    },
+    {
+      "id": 25,
+      "cells_count": 7,
+      "cells": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          1
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          2,
+          2
+        ]
+      ],
+      "bbox": {
+        "min": [
+          0,
+          0
+        ],
+        "max": [
+          2,
+          2
+        ]
+      },
+      "reference_dots": [
+        [
+          0,
+          0
+        ],
+        [
+          2,
+          2
+        ]
+      ],
+      "rotations_allowed": [
+        0,
+        90,
+        180,
+        270
+      ],
+      "mirror_is_separate_piece": true,
+      "dots_confidence": "confirmed"
+    },
+    {
+      "id": 26,
+      "cells_count": 6,
+      "cells": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          0,
+          3
+        ],
+        [
+          1,
+          1
+        ],
+        [
+          1,
+          3
+        ]
+      ],
+      "bbox": {
+        "min": [
+          0,
+          0
+        ],
+        "max": [
+          1,
+          3
+        ]
+      },
+      "reference_dots": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          3
+        ]
+      ],
+      "rotations_allowed": [
+        0,
+        90,
+        180,
+        270
+      ],
+      "mirror_is_separate_piece": true,
+      "dots_confidence": "confirmed"
+    },
+    {
+      "id": 27,
+      "cells_count": 6,
+      "cells": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          0,
+          3
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          2
+        ]
+      ],
+      "bbox": {
+        "min": [
+          0,
+          0
+        ],
+        "max": [
+          1,
+          3
+        ]
+      },
+      "reference_dots": [
+        [
+          0,
+          3
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "rotations_allowed": [
+        0,
+        90,
+        180,
+        270
+      ],
+      "mirror_is_separate_piece": true,
+      "dots_confidence": "confirmed"
+    }
+  ]
+}

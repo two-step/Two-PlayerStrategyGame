@@ -1,0 +1,10 @@
+{
+  "description": "Engage in a strategic two-player puzzle game challenging spatial reasoning and planning without AI assistance, ideal for competitive minds seeking pure skill play.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
