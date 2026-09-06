@@ -2013,6 +2013,23 @@ function DevTestPage() {
             <div className="overflow-x-auto"><ContainerGrid filledCells={filledOpp} closedRows={closedOpp} cellSize={18} rows={DEV_ROWS} pieces={piecesOpp} /></div>
           </div>
 
+          <div style={{ border: `1px solid ${C.steelDim}25`, background: C.graphite2 }} className="p-4">
+            <p style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>
+              OPPONENT FIGURES — same shared 27-figure bank as yours; view only
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {FIGURES.map(fig => {
+                const used = usedIds.has(fig.id)
+                return (
+                  <div key={fig.id} title={`${fig.label} ${fig.name}${used ? ' (already used)' : ' (still in the shared pool)'}`}
+                    style={{ border: `1px solid ${used ? C.steelDim + '30' : C.steel + '40'}`, background: used ? C.graphite : 'transparent', opacity: used ? 0.25 : 1 }}>
+                    <FigurePreview cells={fig.cells} cardSize={32} color={used ? C.steelDim : C.steel} cellPx={6} dots={fig.dots} showNumber={false} />
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
           <div style={{ border: `1px solid ${C.blue}30`, background: C.graphite2 }} className="p-4">
             <p style={{ color: C.blue, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>
               MY FIGURES {requester === 'you' && !gameOver && !incomingFig ? '— click one to request it for the opponent' : ''}

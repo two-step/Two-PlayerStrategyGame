@@ -157,6 +157,20 @@ export function overhangRatio(cells: Cells, filled: Set<string>, rows: number): 
   return cells.length ? unsupported / cells.length : 0
 }
 
+// Rule 01 "Support" (site FAQ: "No piece may float. It must rest on the base row A
+// or on an already-placed piece.") — literally: does the new figure, AS A WHOLE
+// OBJECT, touch the floor or an EXISTING (already-on-the-board) cell anywhere at
+// all. This is deliberately independent of overhangRatio below: a rigid multi-cell
+// figure can be internally self-supporting (upper cells resting on the figure's own
+// lower cells) while the whole assembly still has zero contact with the floor or
+// the rest of the board — e.g. an L-shape floating with its foot touching nothing —
+// and overhangRatio alone would undercount that as "50%-ish unsupported" instead of
+// "not touching the world at all". `filled` is the board BEFORE this placement, so
+// it can never include the figure's own cells — no need to exclude them here.
+export function hasWorldSupport(cells: Cells, filled: Set<string>, rows: number): boolean {
+  return cells.some(([r, c]) => r === rows - 1 || filled.has(cellKey(r + 1, c)))
+}
+
 export function colHeights(filled: Set<string>, rows: number): number[] {
   const h = new Array(COLS).fill(0)
   filled.forEach(key => {
@@ -214,12 +228,11 @@ export function checkPlacement(cells: Cells | null, filled: Set<string>, rows: n
   if (!inBounds(cells, rows)) return { ok: false, reason: 'Placement goes outside the container' }
   if (collides(cells, filled)) return { ok: false, reason: 'Cell already occupied' }
   const oh = overhangRatio(cells, filled, rows)
-  // Rule 01 "Support" (site FAQ: "No piece may float. It must rest on the base row A or
-  // on an already-placed piece.") is a HARD rule with no fair-play exception — distinct
-  // from Rule 03 "Overhang" below, which tolerates up to 50% unsupported outright and up
-  // to 100% via bilateral fair-play. A fully floating piece (0% of it touches the floor
-  // or an existing piece) fails Support and is rejected outright, always.
-  if (oh >= 1) {
+  // Rule 01 "Support" is a HARD rule with no fair-play exception — distinct from Rule 03
+  // "Overhang" below (which tolerates up to 50% unsupported outright, up to 100% via
+  // bilateral fair-play). Checked via hasWorldSupport, NOT via oh >= 1 — a figure can be
+  // internally self-supporting (oh well under 1) while still touching nothing real.
+  if (!hasWorldSupport(cells, filled, rows)) {
     return { ok: false, reason: 'No support — this placement doesn’t rest on the floor or on any existing piece anywhere', overhangRatio: oh, cells }
   }
   if (oh > 0.5 && !fairPlayApproved) {
@@ -244,6 +257,7 @@ export function enumeratePlacements(figure: FigureDef, filled: Set<string>, rows
       for (let c = 0; c < COLS; c++) {
         const cells = ori.map(([dr, dc]) => [dr + r, dc + c] as [number, number])
         if (!inBounds(cells, rows) || collides(cells, filled)) continue
+        if (!hasWorldSupport(cells, filled, rows)) continue // never a legal move, not even via fair play
         const oh = overhangRatio(cells, filled, rows)
         if (oh > 0.5) continue // engine plays fair-play-clean moves only, by design
         const nextFilled = new Set(filled)
