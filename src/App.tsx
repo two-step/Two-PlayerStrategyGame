@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, type CSSProperties } from 'react'
 import { parseNotation, formatNotation, computePlacementFromDots, computePlacementFromAnchor, checkPlacement, closedRows, cellKey, canPlaceAnywhere } from './engine/rules'
 import { createOpponentEngine, type Difficulty } from './engine/opponentEngine'
 
@@ -309,6 +309,50 @@ function ContainerGrid({
           textAnchor="middle" fontSize={8} fill={C.steelDim}>{c}</text>
       ))}
     </svg>
+  )
+}
+
+// ── Figure bank panel — one shared renderer for both "OPPONENT FIGURES" (view-only) and
+// "MY FIGURES" (clickable) in the dev/test page, so the used/dimmed/actionable styling for
+// all 27 figures lives in exactly one place instead of two copies that could drift apart.
+const FIGURE_BANK_WIDTH_CLASS = 'lg:w-[260px] lg:shrink-0'
+
+function FigureBankPanel({
+  title, panelColor, itemColor, onSelect, getStatus,
+}: {
+  title: string
+  panelColor: string
+  itemColor: string
+  // Present only for a clickable bank (e.g. MY FIGURES); a view-only bank (OPPONENT FIGURES)
+  // omits it and every figure renders as a plain, non-interactive swatch.
+  onSelect?: (fig: Figure) => void
+  getStatus: (fig: Figure) => { used: boolean; actionable: boolean; hint: string }
+}) {
+  return (
+    <div style={{ border: `1px solid ${panelColor}30`, background: C.graphite2 }} className={`p-4 ${FIGURE_BANK_WIDTH_CLASS}`}>
+      <p style={{ color: panelColor, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>{title}</p>
+      <div className="flex flex-wrap gap-2">
+        {FIGURES.map(fig => {
+          const { used, actionable, hint } = getStatus(fig)
+          const color = used ? C.steelDim : actionable ? itemColor : C.steelDim
+          const style: CSSProperties = {
+            border: `1px solid ${used ? C.steelDim + '30' : actionable ? itemColor + '40' : C.steelDim + '40'}`,
+            background: used ? C.graphite : 'transparent',
+            opacity: used ? 0.25 : actionable ? 1 : 0.4,
+          }
+          const preview = <FigurePreview cells={fig.cells} cardSize={32} color={color} cellPx={6} dots={fig.dots} showNumber={false} />
+          const title_ = `${fig.label} ${fig.name}${hint}`
+          return onSelect ? (
+            <button key={fig.id} title={title_} onClick={actionable ? () => onSelect(fig) : undefined}
+              disabled={!actionable} style={{ ...style, cursor: actionable ? 'pointer' : 'default' }}>
+              {preview}
+            </button>
+          ) : (
+            <div key={fig.id} title={title_} style={style}>{preview}</div>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 
@@ -2025,22 +2069,13 @@ function DevTestPage() {
               </div>
             </div>
 
-            <div style={{ border: `1px solid ${C.steelDim}25`, background: C.graphite2 }} className="p-4 lg:w-[260px] lg:shrink-0">
-              <p style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>
-                OPPONENT FIGURES — opponent picks from here to fill your container above; view only
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {FIGURES.map(fig => {
-                  const used = usedIds.has(fig.id)
-                  return (
-                    <div key={fig.id} title={`${fig.label} ${fig.name}${used ? ' (already used)' : ' (still in the shared pool)'}`}
-                      style={{ border: `1px solid ${used ? C.steelDim + '30' : C.steel + '40'}`, background: used ? C.graphite : 'transparent', opacity: used ? 0.25 : 1 }}>
-                      <FigurePreview cells={fig.cells} cardSize={32} color={used ? C.steelDim : C.steel} cellPx={6} dots={fig.dots} showNumber={false} />
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
+            <FigureBankPanel
+              title="OPPONENT FIGURES — opponent picks from here to fill your container above; view only"
+              panelColor={C.steelDim} itemColor={C.steel}
+              getStatus={fig => ({
+                used: usedIds.has(fig.id), actionable: true,
+                hint: usedIds.has(fig.id) ? ' (already used)' : ' (still in the shared pool)',
+              })} />
           </div>
 
           <div className="flex flex-col lg:flex-row gap-5 items-start">
@@ -2051,25 +2086,15 @@ function DevTestPage() {
               <div className="overflow-x-auto"><ContainerGrid filledCells={filledOpp} closedRows={closedOpp} cellSize={18} rows={DEV_ROWS} pieces={piecesOpp} /></div>
             </div>
 
-            <div style={{ border: `1px solid ${C.blue}30`, background: C.graphite2 }} className="p-4 lg:w-[260px] lg:shrink-0">
-              <p style={{ color: C.blue, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>
-                MY FIGURES {requester === 'you' && !gameOver && !incomingFig ? '— click one to fill the opponent\'s container above' : '— fills the opponent\'s container above'}
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {FIGURES.map(fig => {
-                  const used = usedIds.has(fig.id)
-                  const requestable = requester === 'you' && !gameOver && !incomingFig && !used && fig.id !== lastRequestToYou
-                  return (
-                    <button key={fig.id} title={`${fig.label} ${fig.name}${used ? ' (already used)' : fig.id === lastRequestToYou ? ' (repeat-request blocked)' : !requestable ? ' (not your turn to request)' : ''}`}
-                      onClick={requestable ? () => requestForOpp(fig) : undefined}
-                      disabled={!requestable}
-                      style={{ border: `1px solid ${used ? C.steelDim + '30' : requestable ? C.cyan + '40' : C.steelDim + '40'}`, background: used ? C.graphite : 'transparent', opacity: used ? 0.25 : requestable ? 1 : 0.4, cursor: requestable ? 'pointer' : 'default' }}>
-                      <FigurePreview cells={fig.cells} cardSize={32} color={used ? C.steelDim : requestable ? C.cyan : C.steelDim} cellPx={6} dots={fig.dots} showNumber={false} />
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
+            <FigureBankPanel
+              title={`MY FIGURES ${requester === 'you' && !gameOver && !incomingFig ? "— click one to fill the opponent's container above" : "— fills the opponent's container above"}`}
+              panelColor={C.blue} itemColor={C.cyan} onSelect={requestForOpp}
+              getStatus={fig => {
+                const used = usedIds.has(fig.id)
+                const actionable = requester === 'you' && !gameOver && !incomingFig && !used && fig.id !== lastRequestToYou
+                const hint = used ? ' (already used)' : fig.id === lastRequestToYou ? ' (repeat-request blocked)' : !actionable ? ' (not your turn to request)' : ''
+                return { used, actionable, hint }
+              }} />
           </div>
         </div>
 
