@@ -1,4 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect, useMemo } from 'react'
+import { parseNotation, computePlacementFromDots, computePlacementFromAnchor, checkPlacement, closedRows, cellKey, canPlaceAnywhere } from './engine/rules'
+import { createOpponentEngine, type Difficulty } from './engine/opponentEngine'
 
 // ── Brand colors ──────────────────────────────────────────────────────────────
 const C = {
@@ -15,7 +17,7 @@ const C = {
   red: '#D6456F',
 } as const
 
-type Page = 'home' | 'figures' | 'rules' | 'lore' | 'play' | 'practice' | 'sandbox' | 'printplay' | 'auth' | 'profile'
+type Page = 'home' | 'figures' | 'rules' | 'lore' | 'play' | 'practice' | 'sandbox' | 'printplay' | 'auth' | 'profile' | 'devtest'
 type Cells = [number, number][]
 
 interface Figure {
@@ -471,6 +473,10 @@ function Nav({ page, setPage, isLoggedIn, onSignOut }: {
             className={musicOn ? 'animate-pulse' : ''}>
             <MusicIcon />
           </button>
+          <button onClick={() => setPage('devtest')} title="Dev/test environment (TO_DO item 6)"
+            style={{ color: page === 'devtest' ? C.red : C.steelDim, border: `1px solid ${C.steelDim}30`, fontFamily: "'JetBrains Mono', monospace", fontSize: 10, padding: '4px 8px' }}>
+            TEST
+          </button>
           {isLoggedIn ? (
             <>
               <button onClick={() => setPage('profile')} style={{ color: page === 'profile' ? C.cyan : C.steel }}
@@ -509,6 +515,8 @@ function Nav({ page, setPage, isLoggedIn, onSignOut }: {
               style={{ color: page === l.p ? C.cyan : C.steel }}
               className="text-sm font-medium text-left">{l.label}</button>
           ))}
+          <button onClick={() => { setPage('devtest'); setOpen(false) }} style={{ color: page === 'devtest' ? C.red : C.steelDim }}
+            className="text-sm font-medium text-left">Dev/Test</button>
           {isLoggedIn ? (
             <>
               <button onClick={() => { setPage('profile'); setOpen(false) }} style={{ color: C.steel }} className="text-sm font-medium text-left">Profile</button>
@@ -1699,6 +1707,276 @@ function ProfilePage() {
   )
 }
 
+// ── Dev/Test Environment Page — TO_DO.docx items 6-8 (2026-09-06) ─────────────
+// Not a public game mode: a harness for exercising the rules/opponent engine
+// (src/engine/rules.ts, src/engine/opponentEngine.ts) while a real backend
+// doesn't exist yet. See those files for what's approximated and why.
+function DevTestPage() {
+  const DEV_ROWS = 10 // matches Rated/Practice container size (v2 Part B)
+
+  const [difficulty, setDifficulty] = useState<Difficulty>('medium')
+  const engine = useMemo(() => createOpponentEngine({ difficulty }), [difficulty])
+
+  const [filledYou, setFilledYou] = useState<Set<string>>(new Set())
+  const [filledOpp, setFilledOpp] = useState<Set<string>>(new Set())
+  const [usedIds, setUsedIds] = useState<Set<number>>(new Set())
+
+  const [coinState, setCoinState] = useState<'idle' | 'spinning' | 'done'>('idle')
+  const [requester, setRequester] = useState<'you' | 'opp' | null>(null)
+
+  const [incomingFigId, setIncomingFigId] = useState<number | null>(null)
+  const [lastRequestToYou, setLastRequestToYou] = useState<number | null>(null)
+  const [lastRequestToOpp, setLastRequestToOpp] = useState<number | null>(null)
+
+  const [rotIdx, setRotIdx] = useState(0)
+  const [notation, setNotation] = useState('')
+  const [response, setResponse] = useState('Flip the coin to decide who requests first.')
+  const [pendingFairPlay, setPendingFairPlay] = useState<{ cells: ReturnType<typeof computePlacementFromDots> } | null>(null)
+  const [gameOver, setGameOver] = useState<string | null>(null)
+  const [log, setLog] = useState<{ t: number; text: string }[]>([])
+  const [showInternals, setShowInternals] = useState(false)
+
+  const pushLog = (text: string) => setLog(l => [{ t: Date.now(), text }, ...l].slice(0, 40))
+
+  const availableFigures = FIGURES.filter(f => !usedIds.has(f.id))
+  const incomingFig = incomingFigId != null ? FIGURES.find(f => f.id === incomingFigId) ?? null : null
+  const orientations = incomingFig ? getOrientations(incomingFig.cells) : []
+  const closedYou = closedRows(filledYou, DEV_ROWS)
+  const closedOpp = closedRows(filledOpp, DEV_ROWS)
+
+  function requestForOpp(fig: Figure) {
+    if (gameOver || requester !== 'you') return
+    setUsedIds(prev => new Set(prev).add(fig.id))
+    setLastRequestToOpp(fig.id)
+    pushLog(`You request ${fig.label} for the opponent.`)
+    const decision = engine.decidePlacement(fig, filledOpp, DEV_ROWS)
+    if (decision.kind === 'pass') {
+      pushLog(`Opponent: ${decision.message}`)
+      setGameOver('You win — the opponent has no legal placement for that figure.')
+      return
+    }
+    if (decision.kind === 'place') {
+      const next = new Set(filledOpp)
+      decision.cells.forEach(([r, c]) => next.add(cellKey(r, c)))
+      setFilledOpp(next)
+      pushLog(`Opponent places ${fig.label}. ${decision.message}`)
+      const nowClosed = closedRows(next, DEV_ROWS)
+      if (nowClosed.size >= 5) { setGameOver('Opponent wins — 5 rows closed.'); return }
+    }
+    setRequester('opp')
+    setResponse('Waiting for the opponent to request a figure from you…')
+  }
+
+  // Opponent's turn to request a figure for you, whenever it becomes their turn.
+  useEffect(() => {
+    if (requester !== 'opp' || incomingFigId != null || gameOver) return
+    const decision = engine.chooseFigureToRequest(availableFigures, lastRequestToOpp)
+    if (decision.kind !== 'request') return
+    setUsedIds(prev => new Set(prev).add(decision.figureId))
+    setLastRequestToYou(decision.figureId)
+    setIncomingFigId(decision.figureId)
+    setRotIdx(0)
+    setResponse(`Opponent: ${decision.message}`)
+    pushLog(`Opponent requests ${FIGURES.find(f => f.id === decision.figureId)?.label} from you.`)
+    const fig = FIGURES.find(f => f.id === decision.figureId)!
+    if (!canPlaceAnywhere(fig, filledYou, DEV_ROWS)) {
+      setGameOver('Opponent wins — you have no legal placement for the requested figure.')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requester, incomingFigId, gameOver])
+
+  function flipCoin() {
+    setCoinState('spinning')
+    setResponse('Flipping…')
+    window.setTimeout(() => {
+      const youFirst = Math.random() < 0.5
+      setCoinState('done')
+      setRequester(youFirst ? 'opp' : 'you') // "opp requests first" means you get the first incoming figure
+      setResponse(youFirst ? 'Coin: you enter first — the opponent requests your first figure.' : 'Coin: opponent enters first — pick a figure to request for them.')
+      pushLog(youFirst ? 'Coin flip: you go first.' : 'Coin flip: opponent goes first.')
+    }, 5000)
+  }
+
+  function submitPlacement() {
+    if (!incomingFig || gameOver) return
+    const parsed = parseNotation(notation, DEV_ROWS)
+    if ('error' in parsed) { setResponse(`Invalid: ${parsed.error}`); return }
+    if (parsed.figureId !== incomingFig.id) {
+      setResponse(`Invalid: notation is for figure ${String(parsed.figureId).padStart(2, '0')}, but ${incomingFig.label} was requested`)
+      return
+    }
+    const cells = parsed.points.length >= 2
+      ? computePlacementFromDots(incomingFig, parsed.points)
+      : computePlacementFromAnchor(incomingFig, rotIdx, parsed.points[0])
+    const result = checkPlacement(cells, filledYou, DEV_ROWS, !!pendingFairPlay)
+    if (!result.ok) {
+      if (result.needsFairPlay) {
+        const fp = engine.respondToFairPlay(result.overhangRatio ?? 0)
+        pushLog(`Fair-play check (${Math.round((result.overhangRatio ?? 0) * 100)}% unsupported): opponent says "${fp.message}"`)
+        if (fp.kind === 'fair_play_response' && fp.approve) {
+          setPendingFairPlay({ cells: result.cells ?? null })
+          setResponse(`${result.reason} — opponent agreed via fair play. Submit again to confirm.`)
+        } else {
+          setResponse(`${result.reason} — opponent declined fair play. Choose a different placement.`)
+        }
+        return
+      }
+      setResponse(`Invalid: ${result.reason}`)
+      return
+    }
+    setPendingFairPlay(null)
+    const next = new Set(filledYou)
+    result.cells!.forEach(([r, c]) => next.add(cellKey(r, c)))
+    setFilledYou(next)
+    setNotation('')
+    setIncomingFigId(null)
+    pushLog(`You place ${incomingFig.label} at ${notation.toUpperCase()}.`)
+    const nowClosed = closedRows(next, DEV_ROWS)
+    if (nowClosed.size >= 5) { setGameOver('You win — 5 rows closed.'); return }
+    if (usedIds.size >= 27) {
+      setGameOver(nowClosed.size === closedOpp.size ? 'Draw — all 27 figures placed, equal rows closed.'
+        : nowClosed.size > closedOpp.size ? 'You win — more rows closed when cargo ran out.' : 'Opponent wins — more rows closed when cargo ran out.')
+      return
+    }
+    setResponse('Placed. Choose a figure to request for the opponent.')
+    setRequester('you')
+  }
+
+  function resetGame() {
+    setFilledYou(new Set()); setFilledOpp(new Set()); setUsedIds(new Set())
+    setCoinState('idle'); setRequester(null); setIncomingFigId(null)
+    setLastRequestToYou(null); setLastRequestToOpp(null); setRotIdx(0); setNotation('')
+    setPendingFairPlay(null); setGameOver(null); setLog([])
+    setResponse('Flip the coin to decide who requests first.')
+  }
+
+  return (
+    <div style={{ background: C.graphite, minHeight: '100vh', paddingTop: '3.5rem' }}>
+      <div style={{ background: `${C.red}18`, borderBottom: `1px solid ${C.red}40` }} className="px-4 md:px-6 py-2 text-center">
+        <span style={{ color: C.red, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.06em' }}>
+          DEV / TEST ENVIRONMENT — local engine only, not the production server (TO_DO.docx items 6-8)
+        </span>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-4 py-5 grid lg:grid-cols-[1fr_340px] gap-5">
+        <div className="flex flex-col gap-5">
+          {gameOver && (
+            <div style={{ border: `1px solid ${C.green}60`, background: `${C.green}18`, color: C.deck }} className="p-4 flex items-center justify-between gap-3">
+              <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 13 }}>{gameOver}</span>
+              <button onClick={resetGame} style={{ background: C.green, color: C.graphite, fontWeight: 700, fontSize: 12, padding: '6px 12px' }}>New game</button>
+            </div>
+          )}
+
+          <div style={{ border: `1px solid ${C.cyan}30`, background: C.graphite2 }} className="p-4">
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
+              <span style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>YOUR CONTAINER — {DEV_ROWS} rows, {closedYou.size} closed</span>
+            </div>
+            <div className="overflow-x-auto"><ContainerGrid filledCells={filledYou} closedRows={closedYou} cellSize={24} rows={DEV_ROWS} /></div>
+          </div>
+
+          <div style={{ border: `1px solid ${C.steelDim}25`, background: C.graphite2 }} className="p-4">
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
+              <span style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>OPPONENT CONTAINER — {closedOpp.size} closed · {difficulty}</span>
+            </div>
+            <div className="overflow-x-auto"><ContainerGrid filledCells={filledOpp} closedRows={closedOpp} cellSize={18} rows={DEV_ROWS} /></div>
+          </div>
+
+          <div style={{ border: `1px solid ${C.blue}30`, background: C.graphite2 }} className="p-4">
+            <p style={{ color: C.blue, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>
+              ALL 27 FIGURES {requester === 'you' && !gameOver && !incomingFig ? '— click one to request it for the opponent' : ''}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {FIGURES.map(fig => {
+                const used = usedIds.has(fig.id)
+                const requestable = requester === 'you' && !gameOver && !incomingFig && !used && fig.id !== lastRequestToYou
+                return (
+                  <button key={fig.id} title={`${fig.label} ${fig.name}${fig.id === lastRequestToYou ? ' (repeat-request blocked)' : ''}`}
+                    onClick={requestable ? () => requestForOpp(fig) : undefined}
+                    disabled={!requestable}
+                    style={{ border: `1px solid ${used ? C.steelDim + '30' : C.cyan + '40'}`, background: used ? C.graphite : 'transparent', opacity: used ? 0.25 : 1, cursor: requestable ? 'pointer' : 'default' }}>
+                    <FigurePreview cells={fig.cells} cardSize={32} color={used ? C.steelDim : C.cyan} cellPx={6} dots={fig.dots} number={fig.id} />
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-4">
+          <div style={{ border: `1px solid ${C.blue}40`, background: C.graphite2 }} className="p-5">
+            <p style={{ color: C.blue, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>OPPONENT DIFFICULTY</p>
+            <select value={difficulty} onChange={e => setDifficulty(e.target.value as Difficulty)}
+              style={{ width: '100%', background: C.graphite, border: `1px solid ${C.blue}`, color: C.deck, fontFamily: "'JetBrains Mono',monospace", fontSize: 13, padding: '8px 10px' }}>
+              <option value="easy">Easy (~15% target win rate)</option>
+              <option value="medium">Medium (~30% target win rate)</option>
+              <option value="hard">Hard (~55% target win rate)</option>
+            </select>
+          </div>
+
+          <div style={{ border: `1px solid ${C.cyan}40`, background: C.graphite2 }} className="p-5">
+            <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>WHO ENTERS FIRST</p>
+            <button onClick={flipCoin} disabled={coinState === 'spinning' || requester != null}
+              style={{ width: '100%', background: coinState === 'spinning' ? C.steelDim : C.cyan, color: C.graphite, fontWeight: 700, fontSize: 13, padding: '10px', opacity: requester != null ? 0.4 : 1 }}
+              className={coinState === 'spinning' ? 'animate-pulse' : ''}>
+              {coinState === 'spinning' ? 'Flipping… (5s)' : requester != null ? 'Flipped' : 'Flip the coin'}
+            </button>
+          </div>
+
+          <div style={{ border: `1px solid ${C.cyan}40`, background: C.graphite2 }} className="p-5">
+            <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 12 }}>INCOMING CARGO</p>
+            {incomingFig ? (
+              <>
+                <div style={{ background: C.graphite, border: `1px solid ${C.cyan}22`, padding: 14 }} className="flex items-center justify-center mb-4">
+                  <FigurePreview cells={orientations[rotIdx % orientations.length] ?? incomingFig.cells} cardSize={90} color={C.cyan} cellPx={16} dots={incomingFig.dots} number={incomingFig.id} />
+                </div>
+                <p style={{ color: C.deck, fontFamily: "'JetBrains Mono',monospace", fontSize: 13, marginBottom: 10 }}>{incomingFig.label} — {incomingFig.name}</p>
+                {incomingFig.dots.length < 2 && (
+                  <div className="flex gap-2 mb-3">
+                    {orientations.map((_, i) => (
+                      <button key={i} onClick={() => setRotIdx(i)}
+                        style={{ border: `1px solid ${rotIdx % orientations.length === i ? C.cyan : C.steelDim + '50'}`, background: rotIdx % orientations.length === i ? `${C.cyan}18` : 'transparent', color: rotIdx % orientations.length === i ? C.cyan : C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, padding: '4px 10px' }}>{i * 90}°</button>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <p style={{ color: C.steelDim, fontSize: 12 }}>Nothing requested yet.</p>
+            )}
+            <p style={{ color: C.steelDim, fontSize: 11, marginBottom: 8 }}>Request notation, e.g. 07B9C10:</p>
+            <div className="flex gap-2 mb-2">
+              <input value={notation} onChange={e => setNotation(e.target.value)} disabled={!incomingFig || !!gameOver}
+                placeholder="figure id + point(s)"
+                style={{ background: C.graphite, border: `1px solid ${C.blue}`, color: C.deck, fontFamily: "'JetBrains Mono',monospace", fontSize: 13, padding: '8px 10px', flex: 1, outline: 'none', opacity: incomingFig ? 1 : 0.4 }} />
+              <button onClick={submitPlacement} disabled={!incomingFig || !notation || !!gameOver}
+                style={{ background: C.cyan, color: C.graphite, fontWeight: 700, fontSize: 12, padding: '8px 14px', opacity: incomingFig && notation && !gameOver ? 1 : 0.4 }}>SUBMIT</button>
+            </div>
+            <p style={{ color: C.steelDim, fontSize: 11, marginBottom: 4 }}>Response:</p>
+            <input value={response} disabled readOnly
+              style={{ width: '100%', background: C.graphite, border: `1px solid ${C.steelDim}40`, color: C.steel, fontFamily: "'JetBrains Mono',monospace", fontSize: 12, padding: '8px 10px' }} />
+          </div>
+
+          <div style={{ border: `1px solid ${C.steelDim}25`, background: C.graphite2 }} className="p-5">
+            <div className="flex items-center justify-between mb-2">
+              <p style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>LOG</p>
+              <button onClick={() => setShowInternals(s => !s)} style={{ color: C.steelDim, fontSize: 10, fontFamily: "'JetBrains Mono',monospace", textDecoration: 'underline' }}>
+                {showInternals ? 'hide' : 'show'} engine internals
+              </button>
+            </div>
+            {log.map(entry => (
+              <p key={entry.t} style={{ color: C.steel, fontSize: 11, marginBottom: 4 }}>{entry.text}</p>
+            ))}
+            {showInternals && (
+              <pre style={{ color: C.steelDim, fontSize: 10, marginTop: 8, whiteSpace: 'pre-wrap', borderTop: `1px solid ${C.steelDim}25`, paddingTop: 8 }}>
+{JSON.stringify({ difficulty: engine.difficulty, targetWinRate: engine.targetWinRate, usedIds: [...usedIds], lastRequestToYou, lastRequestToOpp, requester }, null, 2)}
+              </pre>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── App ───────────────────────────────────────────────────────────────────────
 export default function App() {
   const [page, setPage] = useState<Page>('home')
@@ -1725,6 +2003,7 @@ export default function App() {
       {page === 'sandbox'   && <SandboxPage />}
       {page === 'printplay' && <PrintPlayPage />}
       {page === 'profile'   && <ProfilePage />}
+      {page === 'devtest'   && <DevTestPage />}
     </div>
   )
 }
