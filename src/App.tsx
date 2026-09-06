@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { parseNotation, computePlacementFromDots, computePlacementFromAnchor, checkPlacement, closedRows, cellKey, canPlaceAnywhere } from './engine/rules'
+import { parseNotation, formatNotation, computePlacementFromDots, computePlacementFromAnchor, checkPlacement, closedRows, cellKey, canPlaceAnywhere } from './engine/rules'
 import { createOpponentEngine, type Difficulty } from './engine/opponentEngine'
 
 // ── Brand colors ──────────────────────────────────────────────────────────────
@@ -115,6 +115,25 @@ function getOrientations(cells: Cells): Cells[] {
   return results
 }
 
+// Pick a cell index to carry a figure's number label: prefer a cell that is NOT
+// a reference dot, closest to the shape's bounding-box center (so the number
+// sits in open space); fall back to the geometric center cell (may coincide
+// with a dot/fill) when every cell is a dot. Shared by FigurePreview (isolated
+// catalog/preview cards) and ContainerGrid (pieces placed on the board).
+function pickLabelCellIdx(cells: Cells, dotIdx: number[]): number {
+  const dotSet = new Set(dotIdx)
+  const rowsArr = cells.map(([r]) => r), colsArr = cells.map(([, c]) => c)
+  const cR = (Math.min(...rowsArr) + Math.max(...rowsArr)) / 2
+  const cC = (Math.min(...colsArr) + Math.max(...colsArr)) / 2
+  const pool = cells.map((_, i) => i).filter(i => !dotSet.has(i))
+  const candidates = pool.length ? pool : cells.map((_, i) => i)
+  return candidates.reduce((best, i) => {
+    const d = (cells[i][0] - cR) ** 2 + (cells[i][1] - cC) ** 2
+    const bd = (cells[best][0] - cR) ** 2 + (cells[best][1] - cC) ** 2
+    return d < bd ? i : best
+  }, candidates[0])
+}
+
 // ── FigurePreview — uniform CELL_PX across all figures ───────────────────────
 const CELL_PX = 14
 
@@ -137,10 +156,13 @@ function FigurePreview({ cells, cardSize = 72, color = C.cyan, cellPx = CELL_PX,
   // (source: otgruzka_figures.json id + reference_dots), not just as a caption beside it.
   const fontSize = Math.max(6, Math.min(fitCellPx * 0.6, 11))
   const canShowNumber = showNumber && number != null && fitCellPx * Math.min(numR, numC) >= 8
-  // Anchor the number to the card's own top-left corner, clamped on-canvas, rather than the
-  // shape's bounding box — ox/oy can go negative for shapes that fully span the card.
-  const numX = Math.max(1.5, ox + 1.5)
-  const numY = Math.max(fontSize + 0.5, oy + fontSize + 0.5)
+  // Part L follow-up: put the number in a cell that isn't a reference dot, as close to
+  // the shape's center as possible, instead of pinning it to the card's top-left corner —
+  // avoids the number sitting on top of a dot or clipping off a small/odd-shaped figure.
+  const labelIdx = canShowNumber ? pickLabelCellIdx(cells, dots) : 0
+  const [labelR, labelC] = cells[labelIdx]
+  const numX = ox + (labelC - minC) * fitCellPx + fitCellPx / 2
+  const numY = oy + (labelR - minR) * fitCellPx + fitCellPx / 2
   return (
     <svg width={cardSize} height={cardSize} style={{ display: 'block', flexShrink: 0 }}>
       {cells.map(([r, c], i) => (
@@ -156,9 +178,9 @@ function FigurePreview({ cells, cardSize = 72, color = C.cyan, cellPx = CELL_PX,
           r={dotR} fill={color} />
       ) : null)}
       {canShowNumber && (
-        <text x={numX} y={numY}
+        <text x={numX} y={numY} textAnchor="middle" dominantBaseline="central"
           fontFamily="'JetBrains Mono',monospace" fontSize={fontSize} fontWeight={700}
-          fill={color} style={{ paintOrder: 'stroke', stroke: C.graphite, strokeWidth: fontSize * 0.22 }}>
+          fill={C.deck} style={{ paintOrder: 'stroke', stroke: color, strokeWidth: fontSize * 0.3 }}>
           {number}
         </text>
       )}
@@ -176,11 +198,22 @@ function ContainerGrid({
   rows = 11, showJKSeparator = false,
   highlightCells = new Map<string, string>(),
   onCellClick,
+  pieces = [],
+  ghostCells,
+  markCells,
 }: {
   filledCells: Set<string>; closedRows?: Set<number>; cellSize?: number
   rows?: number; showJKSeparator?: boolean
   highlightCells?: Map<string, string>
   onCellClick?: (r: number, c: number) => void
+  // Placed pieces to number+dot on the board (TO_DO item 8 follow-up): dotIdx are
+  // indices into `cells`, same convention as Figure.dots / FigurePreview's `dots`.
+  pieces?: { id: number | string; cells: Cells; dotIdx: number[] }[]
+  // Faint dashed outline of where a click-to-place selection would land (item 8 follow-up).
+  ghostCells?: Set<string>
+  // Small filled dots marking the cell(s) the player has clicked so far, before the
+  // second point (or confirmation) completes the placement.
+  markCells?: { r: number; c: number }[]
 }) {
   const COLS = 15, RL = 26, BH = 20
   const W = COLS * cellSize + RL, H = rows * cellSize + BH
@@ -222,6 +255,39 @@ function ContainerGrid({
           )
         })
       )}
+      {pieces.map((p, pi) => {
+        if (!p.cells.length) return null
+        const dotSet = new Set(p.dotIdx)
+        const labelIdx = pickLabelCellIdx(p.cells, p.dotIdx)
+        const [lr, lc] = p.cells[labelIdx]
+        const fontSize = Math.max(8, Math.min(cellSize * 0.5, 12))
+        return (
+          <g key={`piece-${p.id}-${pi}`}>
+            {p.cells.map(([r, c], i) => dotSet.has(i) ? (
+              <circle key={`pd-${i}`} cx={c * cellSize + cellSize / 2} cy={r * cellSize + cellSize / 2}
+                r={Math.max(1.5, cellSize * 0.11)} fill={C.deck} />
+            ) : null)}
+            <text x={lc * cellSize + cellSize / 2} y={lr * cellSize + cellSize / 2}
+              textAnchor="middle" dominantBaseline="central"
+              fontFamily="'JetBrains Mono',monospace" fontWeight={700} fontSize={fontSize}
+              fill={C.deck} style={{ paintOrder: 'stroke', stroke: C.graphite, strokeWidth: fontSize * 0.32 }}>
+              {p.id}
+            </text>
+          </g>
+        )
+      })}
+      {ghostCells && Array.from(ghostCells).map(key => {
+        const [r, c] = key.split(',').map(Number)
+        return (
+          <rect key={`ghost-${key}`} x={c * cellSize + 1.5} y={r * cellSize + 1.5}
+            width={cellSize - 3} height={cellSize - 3}
+            fill="none" stroke={C.cyan} strokeWidth={1.25} strokeDasharray="3 2" opacity={0.6} />
+        )
+      })}
+      {markCells?.map((p, i) => (
+        <circle key={`mark-${i}`} cx={p.c * cellSize + cellSize / 2} cy={p.r * cellSize + cellSize / 2}
+          r={Math.max(2, cellSize * 0.16)} fill={C.cyan} opacity={0.85} />
+      ))}
       {showJKSeparator && rows === 11 && (
         <line x1={0} y1={cellSize} x2={COLS * cellSize} y2={cellSize}
           stroke={C.cyan} strokeWidth={2} strokeDasharray="4 3" opacity={0.7} />
@@ -474,8 +540,8 @@ function Nav({ page, setPage, isLoggedIn, onSignOut }: {
             <MusicIcon />
           </button>
           <button onClick={() => setPage('devtest')} title="Dev/test environment (TO_DO item 6)"
-            style={{ color: page === 'devtest' ? C.red : C.steelDim, border: `1px solid ${C.steelDim}30`, fontFamily: "'JetBrains Mono', monospace", fontSize: 10, padding: '4px 8px' }}>
-            TEST
+            style={{ color: page === 'devtest' ? C.deck : C.green, background: page === 'devtest' ? C.green : `${C.green}22`, border: `1px solid ${C.green}88`, fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 700, letterSpacing: '0.04em', padding: '5px 10px' }}>
+            ● TEST
           </button>
           {isLoggedIn ? (
             <>
@@ -515,8 +581,9 @@ function Nav({ page, setPage, isLoggedIn, onSignOut }: {
               style={{ color: page === l.p ? C.cyan : C.steel }}
               className="text-sm font-medium text-left">{l.label}</button>
           ))}
-          <button onClick={() => { setPage('devtest'); setOpen(false) }} style={{ color: page === 'devtest' ? C.red : C.steelDim }}
-            className="text-sm font-medium text-left">Dev/Test</button>
+          <button onClick={() => { setPage('devtest'); setOpen(false) }}
+            style={{ color: page === 'devtest' ? C.deck : C.green, background: page === 'devtest' ? C.green : `${C.green}22`, border: `1px solid ${C.green}88`, fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, padding: '6px 10px', width: 'fit-content' }}
+            className="text-sm text-left">● Dev/Test</button>
           {isLoggedIn ? (
             <>
               <button onClick={() => { setPage('profile'); setOpen(false) }} style={{ color: C.steel }} className="text-sm font-medium text-left">Profile</button>
@@ -901,7 +968,7 @@ function FiguresPage() {
             <button key={fig.id} onClick={() => { setSelected(fig); setOrientation(0) }}
               style={{ border: `1px solid ${selected?.id === fig.id ? C.cyan : `${C.cyan}22`}`, background: selected?.id === fig.id ? `${C.cyan}18` : C.graphite2, transition: 'all 0.15s' }}
               className="aspect-square flex flex-col items-center justify-center gap-1 p-2 hover:border-cyan-400/60">
-              <FigurePreview cells={fig.cells} cardSize={52} color={selected?.id === fig.id ? C.cyan : `${C.cyan}90`} dots={fig.dots} number={fig.id} />
+              <FigurePreview cells={fig.cells} cardSize={68} color={selected?.id === fig.id ? C.cyan : `${C.cyan}90`} dots={fig.dots} number={fig.id} />
               <span style={{ color: selected?.id === fig.id ? C.cyan : C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 8 }}>{fig.label}</span>
             </button>
           ))}
@@ -1720,6 +1787,12 @@ function DevTestPage() {
   const [filledYou, setFilledYou] = useState<Set<string>>(new Set())
   const [filledOpp, setFilledOpp] = useState<Set<string>>(new Set())
   const [usedIds, setUsedIds] = useState<Set<number>>(new Set())
+  // Placed-piece metadata (id + which cells are the reference dots) so the containers
+  // can render numbers/dots on every placed figure, not just a flat filled-cell color.
+  const [piecesYou, setPiecesYou] = useState<{ id: number; cells: Cells; dotIdx: number[] }[]>([])
+  const [piecesOpp, setPiecesOpp] = useState<{ id: number; cells: Cells; dotIdx: number[] }[]>([])
+  // Click-to-fill notation: 1 point for a single-dot figure, 2 for a two-dot figure.
+  const [clickPoints, setClickPoints] = useState<{ r: number; c: number }[]>([])
 
   const [coinState, setCoinState] = useState<'idle' | 'spinning' | 'done'>('idle')
   const [requester, setRequester] = useState<'you' | 'opp' | null>(null)
@@ -1737,12 +1810,44 @@ function DevTestPage() {
   const [showInternals, setShowInternals] = useState(false)
 
   const pushLog = (text: string) => setLog(l => [{ t: Date.now(), text }, ...l].slice(0, 40))
+  // Small color-coding for the log so it reads at a glance instead of a flat gray wall of text.
+  function logColor(text: string): string {
+    if (/wins?\b/i.test(text)) return /you win/i.test(text) ? C.green : C.red
+    if (/^draw/i.test(text)) return C.blue
+    if (text.startsWith('You')) return C.cyan
+    return C.steel
+  }
 
   const availableFigures = FIGURES.filter(f => !usedIds.has(f.id))
   const incomingFig = incomingFigId != null ? FIGURES.find(f => f.id === incomingFigId) ?? null : null
   const orientations = incomingFig ? getOrientations(incomingFig.cells) : []
   const closedYou = closedRows(filledYou, DEV_ROWS)
   const closedOpp = closedRows(filledOpp, DEV_ROWS)
+  // Click-to-fill (item 8 follow-up): two-dot figures need point1+point2, single-dot
+  // figures place from one anchor click (using the rotation buttons for orientation).
+  const pointsNeeded = incomingFig ? (incomingFig.dots.length >= 2 ? 2 : 1) : 0
+
+  // Keep the notation field in sync with whatever's been clicked on YOUR CONTAINER so far.
+  useEffect(() => {
+    if (!incomingFig || clickPoints.length < pointsNeeded) return
+    setNotation(formatNotation(incomingFig.id, clickPoints.slice(0, pointsNeeded), DEV_ROWS))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clickPoints, incomingFig?.id, pointsNeeded])
+
+  // Faint outline of where the current click-selection (or its rotation) would land —
+  // "слабо видимые контуры фигуры" — purely visual, Submit still does the real check.
+  const ghostCells = useMemo(() => {
+    if (!incomingFig || clickPoints.length < pointsNeeded) return undefined
+    const cells = pointsNeeded === 2
+      ? computePlacementFromDots(incomingFig, clickPoints)
+      : computePlacementFromAnchor(incomingFig, rotIdx, clickPoints[0])
+    return cells ? new Set(cells.map(([r, c]) => cellKey(r, c))) : undefined
+  }, [incomingFig, clickPoints, pointsNeeded, rotIdx])
+
+  function handleYourContainerClick(r: number, c: number) {
+    if (!incomingFig || gameOver) return
+    setClickPoints(prev => (prev.length >= pointsNeeded ? [{ r, c }] : [...prev, { r, c }]))
+  }
 
   function requestForOpp(fig: Figure) {
     if (gameOver || requester !== 'you') return
@@ -1759,6 +1864,7 @@ function DevTestPage() {
       const next = new Set(filledOpp)
       decision.cells.forEach(([r, c]) => next.add(cellKey(r, c)))
       setFilledOpp(next)
+      setPiecesOpp(prev => [...prev, { id: fig.id, cells: decision.cells, dotIdx: fig.dots }])
       pushLog(`Opponent places ${fig.label}. ${decision.message}`)
       const nowClosed = closedRows(next, DEV_ROWS)
       if (nowClosed.size >= 5) { setGameOver('Opponent wins — 5 rows closed.'); return }
@@ -1776,6 +1882,7 @@ function DevTestPage() {
     setLastRequestToYou(decision.figureId)
     setIncomingFigId(decision.figureId)
     setRotIdx(0)
+    setClickPoints([])
     setResponse(`Opponent: ${decision.message}`)
     pushLog(`Opponent requests ${FIGURES.find(f => f.id === decision.figureId)?.label} from you.`)
     const fig = FIGURES.find(f => f.id === decision.figureId)!
@@ -1828,7 +1935,9 @@ function DevTestPage() {
     const next = new Set(filledYou)
     result.cells!.forEach(([r, c]) => next.add(cellKey(r, c)))
     setFilledYou(next)
+    setPiecesYou(prev => [...prev, { id: incomingFig.id, cells: result.cells!, dotIdx: incomingFig.dots }])
     setNotation('')
+    setClickPoints([])
     setIncomingFigId(null)
     pushLog(`You place ${incomingFig.label} at ${notation.toUpperCase()}.`)
     const nowClosed = closedRows(next, DEV_ROWS)
@@ -1844,6 +1953,7 @@ function DevTestPage() {
 
   function resetGame() {
     setFilledYou(new Set()); setFilledOpp(new Set()); setUsedIds(new Set())
+    setPiecesYou([]); setPiecesOpp([]); setClickPoints([])
     setCoinState('idle'); setRequester(null); setIncomingFigId(null)
     setLastRequestToYou(null); setLastRequestToOpp(null); setRotIdx(0); setNotation('')
     setPendingFairPlay(null); setGameOver(null); setLog([])
@@ -1870,20 +1980,33 @@ function DevTestPage() {
           <div style={{ border: `1px solid ${C.cyan}30`, background: C.graphite2 }} className="p-4">
             <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
               <span style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>YOUR CONTAINER — {DEV_ROWS} rows, {closedYou.size} closed</span>
+              {incomingFig && !gameOver && (
+                <span style={{ color: C.steelDim, fontSize: 11 }}>
+                  Click {pointsNeeded === 2 ? 'point 1, then point 2' : 'a point'} below to fill the request field ({clickPoints.length}/{pointsNeeded})
+                  {clickPoints.length > 0 && (
+                    <button onClick={() => setClickPoints([])} style={{ color: C.red, marginLeft: 8, textDecoration: 'underline' }}>clear</button>
+                  )}
+                </span>
+              )}
             </div>
-            <div className="overflow-x-auto"><ContainerGrid filledCells={filledYou} closedRows={closedYou} cellSize={24} rows={DEV_ROWS} /></div>
+            <div className="overflow-x-auto">
+              <ContainerGrid filledCells={filledYou} closedRows={closedYou} cellSize={24} rows={DEV_ROWS}
+                pieces={piecesYou}
+                onCellClick={incomingFig && !gameOver ? handleYourContainerClick : undefined}
+                ghostCells={ghostCells} markCells={clickPoints} />
+            </div>
           </div>
 
           <div style={{ border: `1px solid ${C.steelDim}25`, background: C.graphite2 }} className="p-4">
             <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
               <span style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>OPPONENT CONTAINER — {closedOpp.size} closed · {difficulty}</span>
             </div>
-            <div className="overflow-x-auto"><ContainerGrid filledCells={filledOpp} closedRows={closedOpp} cellSize={18} rows={DEV_ROWS} /></div>
+            <div className="overflow-x-auto"><ContainerGrid filledCells={filledOpp} closedRows={closedOpp} cellSize={18} rows={DEV_ROWS} pieces={piecesOpp} /></div>
           </div>
 
           <div style={{ border: `1px solid ${C.blue}30`, background: C.graphite2 }} className="p-4">
             <p style={{ color: C.blue, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>
-              ALL 27 FIGURES {requester === 'you' && !gameOver && !incomingFig ? '— click one to request it for the opponent' : ''}
+              MY FIGURES {requester === 'you' && !gameOver && !incomingFig ? '— click one to request it for the opponent' : ''}
             </p>
             <div className="flex flex-wrap gap-2">
               {FIGURES.map(fig => {
@@ -1894,7 +2017,7 @@ function DevTestPage() {
                     onClick={requestable ? () => requestForOpp(fig) : undefined}
                     disabled={!requestable}
                     style={{ border: `1px solid ${used ? C.steelDim + '30' : C.cyan + '40'}`, background: used ? C.graphite : 'transparent', opacity: used ? 0.25 : 1, cursor: requestable ? 'pointer' : 'default' }}>
-                    <FigurePreview cells={fig.cells} cardSize={32} color={used ? C.steelDim : C.cyan} cellPx={6} dots={fig.dots} number={fig.id} />
+                    <FigurePreview cells={fig.cells} cardSize={32} color={used ? C.steelDim : C.cyan} cellPx={6} dots={fig.dots} showNumber={false} />
                   </button>
                 )
               })}
@@ -1927,7 +2050,7 @@ function DevTestPage() {
             {incomingFig ? (
               <>
                 <div style={{ background: C.graphite, border: `1px solid ${C.cyan}22`, padding: 14 }} className="flex items-center justify-center mb-4">
-                  <FigurePreview cells={orientations[rotIdx % orientations.length] ?? incomingFig.cells} cardSize={90} color={C.cyan} cellPx={16} dots={incomingFig.dots} number={incomingFig.id} />
+                  <FigurePreview cells={orientations[rotIdx % orientations.length] ?? incomingFig.cells} cardSize={90} color={C.cyan} cellPx={16} dots={incomingFig.dots} showNumber={false} />
                 </div>
                 <p style={{ color: C.deck, fontFamily: "'JetBrains Mono',monospace", fontSize: 13, marginBottom: 10 }}>{incomingFig.label} — {incomingFig.name}</p>
                 {incomingFig.dots.length < 2 && (
@@ -1963,7 +2086,13 @@ function DevTestPage() {
               </button>
             </div>
             {log.map(entry => (
-              <p key={entry.t} style={{ color: C.steel, fontSize: 11, marginBottom: 4 }}>{entry.text}</p>
+              <div key={entry.t} style={{ display: 'flex', gap: 8, alignItems: 'baseline', marginBottom: 6 }}>
+                <span style={{ width: 3, alignSelf: 'stretch', background: logColor(entry.text), flexShrink: 0 }} />
+                <span style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 9, flexShrink: 0 }}>
+                  {new Date(entry.t).toLocaleTimeString([], { hour12: false })}
+                </span>
+                <span style={{ color: C.steel, fontSize: 11 }}>{entry.text}</span>
+              </div>
             ))}
             {showInternals && (
               <pre style={{ color: C.steelDim, fontSize: 10, marginTop: 8, whiteSpace: 'pre-wrap', borderTop: `1px solid ${C.steelDim}25`, paddingTop: 8 }}>
