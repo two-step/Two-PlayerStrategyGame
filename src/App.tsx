@@ -2000,67 +2000,75 @@ function DevTestPage() {
             </div>
           )}
 
-          <div style={{ border: `1px solid ${C.cyan}30`, background: C.graphite2 }} className="p-4">
-            <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
-              <span style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>YOUR CONTAINER — {DEV_ROWS} rows, {closedYou.size} closed</span>
-              {incomingFig && !gameOver && (
-                <span style={{ color: C.steelDim, fontSize: 11 }}>
-                  Click {pointsNeeded === 2 ? 'point 1, then point 2' : 'a point'} below to fill the request field ({clickPoints.length}/{pointsNeeded})
-                  {clickPoints.length > 0 && (
-                    <button onClick={() => setClickPoints([])} style={{ color: C.red, marginLeft: 8, textDecoration: 'underline' }}>clear</button>
-                  )}
-                </span>
-              )}
+          {/* Each container sits next to the figure bank that actually loads into it — the
+              opponent draws from OPPONENT FIGURES to fill YOUR container, you draw from MY
+              FIGURES to fill the OPPONENT's — so "where to pick from" reads left-to-right
+              instead of needing a mental map back up the page. */}
+          <div className="flex flex-col lg:flex-row gap-5 items-start">
+            <div style={{ border: `1px solid ${C.cyan}30`, background: C.graphite2 }} className="p-4 flex-1 min-w-0">
+              <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
+                <span style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>YOUR CONTAINER — {DEV_ROWS} rows, {closedYou.size} closed</span>
+                {incomingFig && !gameOver && (
+                  <span style={{ color: C.steelDim, fontSize: 11 }}>
+                    Click {pointsNeeded === 2 ? 'point 1, then point 2' : 'a point'} below to fill the request field ({clickPoints.length}/{pointsNeeded})
+                    {clickPoints.length > 0 && (
+                      <button onClick={() => setClickPoints([])} style={{ color: C.red, marginLeft: 8, textDecoration: 'underline' }}>clear</button>
+                    )}
+                  </span>
+                )}
+              </div>
+              <div className="overflow-x-auto">
+                <ContainerGrid filledCells={filledYou} closedRows={closedYou} cellSize={24} rows={DEV_ROWS}
+                  pieces={piecesYou}
+                  onCellClick={incomingFig && !gameOver ? handleYourContainerClick : undefined}
+                  ghostCells={ghostCells} ghostValid={ghostValid} markCells={clickPoints} />
+              </div>
             </div>
-            <div className="overflow-x-auto">
-              <ContainerGrid filledCells={filledYou} closedRows={closedYou} cellSize={24} rows={DEV_ROWS}
-                pieces={piecesYou}
-                onCellClick={incomingFig && !gameOver ? handleYourContainerClick : undefined}
-                ghostCells={ghostCells} ghostValid={ghostValid} markCells={clickPoints} />
+
+            <div style={{ border: `1px solid ${C.steelDim}25`, background: C.graphite2 }} className="p-4 lg:w-[260px] lg:shrink-0">
+              <p style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>
+                OPPONENT FIGURES — opponent picks from here to fill your container above; view only
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {FIGURES.map(fig => {
+                  const used = usedIds.has(fig.id)
+                  return (
+                    <div key={fig.id} title={`${fig.label} ${fig.name}${used ? ' (already used)' : ' (still in the shared pool)'}`}
+                      style={{ border: `1px solid ${used ? C.steelDim + '30' : C.steel + '40'}`, background: used ? C.graphite : 'transparent', opacity: used ? 0.25 : 1 }}>
+                      <FigurePreview cells={fig.cells} cardSize={32} color={used ? C.steelDim : C.steel} cellPx={6} dots={fig.dots} showNumber={false} />
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           </div>
 
-          <div style={{ border: `1px solid ${C.steelDim}25`, background: C.graphite2 }} className="p-4">
-            <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
-              <span style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>OPPONENT CONTAINER — {closedOpp.size} closed · {difficulty}</span>
+          <div className="flex flex-col lg:flex-row gap-5 items-start">
+            <div style={{ border: `1px solid ${C.steelDim}25`, background: C.graphite2 }} className="p-4 flex-1 min-w-0">
+              <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
+                <span style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>OPPONENT CONTAINER — {closedOpp.size} closed · {difficulty}</span>
+              </div>
+              <div className="overflow-x-auto"><ContainerGrid filledCells={filledOpp} closedRows={closedOpp} cellSize={18} rows={DEV_ROWS} pieces={piecesOpp} /></div>
             </div>
-            <div className="overflow-x-auto"><ContainerGrid filledCells={filledOpp} closedRows={closedOpp} cellSize={18} rows={DEV_ROWS} pieces={piecesOpp} /></div>
-          </div>
 
-          <div style={{ border: `1px solid ${C.steelDim}25`, background: C.graphite2 }} className="p-4">
-            <p style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>
-              OPPONENT FIGURES — same shared 27-figure bank as yours; view only
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {FIGURES.map(fig => {
-                const used = usedIds.has(fig.id)
-                return (
-                  <div key={fig.id} title={`${fig.label} ${fig.name}${used ? ' (already used)' : ' (still in the shared pool)'}`}
-                    style={{ border: `1px solid ${used ? C.steelDim + '30' : C.steel + '40'}`, background: used ? C.graphite : 'transparent', opacity: used ? 0.25 : 1 }}>
-                    <FigurePreview cells={fig.cells} cardSize={32} color={used ? C.steelDim : C.steel} cellPx={6} dots={fig.dots} showNumber={false} />
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-
-          <div style={{ border: `1px solid ${C.blue}30`, background: C.graphite2 }} className="p-4">
-            <p style={{ color: C.blue, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>
-              MY FIGURES {requester === 'you' && !gameOver && !incomingFig ? '— click one to request it for the opponent' : ''}
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {FIGURES.map(fig => {
-                const used = usedIds.has(fig.id)
-                const requestable = requester === 'you' && !gameOver && !incomingFig && !used && fig.id !== lastRequestToYou
-                return (
-                  <button key={fig.id} title={`${fig.label} ${fig.name}${used ? ' (already used)' : fig.id === lastRequestToYou ? ' (repeat-request blocked)' : !requestable ? ' (not your turn to request)' : ''}`}
-                    onClick={requestable ? () => requestForOpp(fig) : undefined}
-                    disabled={!requestable}
-                    style={{ border: `1px solid ${used ? C.steelDim + '30' : requestable ? C.cyan + '40' : C.steelDim + '40'}`, background: used ? C.graphite : 'transparent', opacity: used ? 0.25 : requestable ? 1 : 0.4, cursor: requestable ? 'pointer' : 'default' }}>
-                    <FigurePreview cells={fig.cells} cardSize={32} color={used ? C.steelDim : requestable ? C.cyan : C.steelDim} cellPx={6} dots={fig.dots} showNumber={false} />
-                  </button>
-                )
-              })}
+            <div style={{ border: `1px solid ${C.blue}30`, background: C.graphite2 }} className="p-4 lg:w-[260px] lg:shrink-0">
+              <p style={{ color: C.blue, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>
+                MY FIGURES {requester === 'you' && !gameOver && !incomingFig ? '— click one to fill the opponent\'s container above' : '— fills the opponent\'s container above'}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {FIGURES.map(fig => {
+                  const used = usedIds.has(fig.id)
+                  const requestable = requester === 'you' && !gameOver && !incomingFig && !used && fig.id !== lastRequestToYou
+                  return (
+                    <button key={fig.id} title={`${fig.label} ${fig.name}${used ? ' (already used)' : fig.id === lastRequestToYou ? ' (repeat-request blocked)' : !requestable ? ' (not your turn to request)' : ''}`}
+                      onClick={requestable ? () => requestForOpp(fig) : undefined}
+                      disabled={!requestable}
+                      style={{ border: `1px solid ${used ? C.steelDim + '30' : requestable ? C.cyan + '40' : C.steelDim + '40'}`, background: used ? C.graphite : 'transparent', opacity: used ? 0.25 : requestable ? 1 : 0.4, cursor: requestable ? 'pointer' : 'default' }}>
+                      <FigurePreview cells={fig.cells} cardSize={32} color={used ? C.steelDim : requestable ? C.cyan : C.steelDim} cellPx={6} dots={fig.dots} showNumber={false} />
+                    </button>
+                  )
+                })}
+              </div>
             </div>
           </div>
         </div>
@@ -2150,6 +2158,14 @@ function DevTestPage() {
 export default function App() {
   const [page, setPage] = useState<Page>('home')
   const [isLoggedIn, setIsLoggedIn] = useState(false)
+
+  // There's no router — Page is just a state switch — so nothing else resets scroll when
+  // it changes. Without this, navigating away from a scrolled-down page (e.g. clicking a
+  // nav link partway down the homepage) lands the next page mid-scroll: content and click
+  // targets can end up shifted under the fixed header, or off-screen entirely.
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [page])
 
   if (page === 'auth') {
     return (
