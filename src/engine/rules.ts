@@ -214,6 +214,14 @@ export function checkPlacement(cells: Cells | null, filled: Set<string>, rows: n
   if (!inBounds(cells, rows)) return { ok: false, reason: 'Placement goes outside the container' }
   if (collides(cells, filled)) return { ok: false, reason: 'Cell already occupied' }
   const oh = overhangRatio(cells, filled, rows)
+  // Rule 01 "Support" (site FAQ: "No piece may float. It must rest on the base row A or
+  // on an already-placed piece.") is a HARD rule with no fair-play exception — distinct
+  // from Rule 03 "Overhang" below, which tolerates up to 50% unsupported outright and up
+  // to 100% via bilateral fair-play. A fully floating piece (0% of it touches the floor
+  // or an existing piece) fails Support and is rejected outright, always.
+  if (oh >= 1) {
+    return { ok: false, reason: 'No support — this placement doesn’t rest on the floor or on any existing piece anywhere', overhangRatio: oh, cells }
+  }
   if (oh > 0.5 && !fairPlayApproved) {
     return { ok: false, reason: `${Math.round(oh * 100)}% unsupported — needs fair-play confirmation from both players`, overhangRatio: oh, needsFairPlay: true, cells }
   }
@@ -252,14 +260,36 @@ export function canPlaceAnywhere(figure: FigureDef, filled: Set<string>, rows: n
   return enumeratePlacements(figure, filled, rows).length > 0
 }
 
-// Simple placement-quality heuristic for the opponent engine: prefer placements
-// that sit low (close to the floor) and finish/extend rows, since that's what
-// wins the game (5 closed rows). Not claimed to be optimal play.
+// Placement-quality heuristic for the opponent engine. Earlier version only rewarded
+// closing rows and staying low, which — since most moves close nothing — collapsed to
+// "always pick the lowest spot" and looked aimless rather than the systematic left-to-right
+// (or bottom-up) packing a competent human plays. Now also rewards a flat, even skyline
+// (no lone tall spikes / no scattered gaps) and packing tight against what's already
+// placed, which in practice makes the greedy choice sweep the container methodically.
 export function scorePlacement(cells: Cells, filled: Set<string>, rows: number): number {
   const nextFilled = new Set(filled)
   cells.forEach(([r, c]) => nextFilled.add(cellKey(r, c)))
   const closedBefore = closedRows(filled, rows).size
   const closedAfter = closedRows(nextFilled, rows).size
+  const rowGain = (closedAfter - closedBefore) * 1000 // closing a row dominates every other factor
+
   const avgDepth = cells.reduce((s, [r]) => s + (rows - 1 - r), 0) / cells.length // 0 = floor
-  return (closedAfter - closedBefore) * 100 - avgDepth
+
+  const afterHeights = colHeights(nextFilled, rows)
+  const meanH = afterHeights.reduce((a, b) => a + b, 0) / afterHeights.length
+  const heightVariance = afterHeights.reduce((s, h) => s + (h - meanH) ** 2, 0) / afterHeights.length
+
+  // Reward hugging already-placed cells (orthogonal neighbors) — a human packs tight
+  // against the existing stack instead of scattering pieces around the container.
+  const own = new Set(cells.map(([r, c]) => cellKey(r, c)))
+  let touching = 0
+  for (const [r, c] of cells) {
+    const neighbors: [number, number][] = [[r - 1, c], [r + 1, c], [r, c - 1], [r, c + 1]]
+    for (const [nr, nc] of neighbors) {
+      const k = cellKey(nr, nc)
+      if (filled.has(k) && !own.has(k)) touching++
+    }
+  }
+
+  return rowGain - avgDepth * 2 - heightVariance * 3 + touching * 5
 }

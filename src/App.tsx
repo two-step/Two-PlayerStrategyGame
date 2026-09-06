@@ -1804,7 +1804,7 @@ function DevTestPage() {
   const [rotIdx, setRotIdx] = useState(0)
   const [notation, setNotation] = useState('')
   const [response, setResponse] = useState('Flip the coin to decide who requests first.')
-  const [pendingFairPlay, setPendingFairPlay] = useState<{ cells: ReturnType<typeof computePlacementFromDots> } | null>(null)
+  const [pendingFairPlay, setPendingFairPlay] = useState<{ key: string } | null>(null)
   const [gameOver, setGameOver] = useState<string | null>(null)
   const [log, setLog] = useState<{ t: number; text: string }[]>([])
   const [showInternals, setShowInternals] = useState(false)
@@ -1830,7 +1830,10 @@ function DevTestPage() {
   // Keep the notation field in sync with whatever's been clicked on YOUR CONTAINER so far.
   useEffect(() => {
     if (!incomingFig || clickPoints.length < pointsNeeded) return
-    setNotation(formatNotation(incomingFig.id, clickPoints.slice(0, pointsNeeded), DEV_ROWS))
+    // Notation convention: points read left to right (ascending column) — [id][left][right] —
+    // independent of which one was physically clicked first.
+    const ordered = [...clickPoints.slice(0, pointsNeeded)].sort((a, b) => a.c - b.c || a.r - b.r)
+    setNotation(formatNotation(incomingFig.id, ordered, DEV_ROWS))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clickPoints, incomingFig?.id, pointsNeeded])
 
@@ -1838,9 +1841,10 @@ function DevTestPage() {
   // "слабо видимые контуры фигуры" — purely visual, Submit still does the real check.
   const ghostCells = useMemo(() => {
     if (!incomingFig || clickPoints.length < pointsNeeded) return undefined
+    const ordered = [...clickPoints.slice(0, pointsNeeded)].sort((a, b) => a.c - b.c || a.r - b.r)
     const cells = pointsNeeded === 2
-      ? computePlacementFromDots(incomingFig, clickPoints)
-      : computePlacementFromAnchor(incomingFig, rotIdx, clickPoints[0])
+      ? computePlacementFromDots(incomingFig, ordered)
+      : computePlacementFromAnchor(incomingFig, rotIdx, ordered[0])
     return cells ? new Set(cells.map(([r, c]) => cellKey(r, c))) : undefined
   }, [incomingFig, clickPoints, pointsNeeded, rotIdx])
 
@@ -1915,19 +1919,24 @@ function DevTestPage() {
     const cells = parsed.points.length >= 2
       ? computePlacementFromDots(incomingFig, parsed.points)
       : computePlacementFromAnchor(incomingFig, rotIdx, parsed.points[0])
-    const result = checkPlacement(cells, filledYou, DEV_ROWS, !!pendingFairPlay)
+    // Fair-play approval is single-use and tied to this exact set of cells — resubmitting
+    // a *different* placement (even right after an approval) must be checked from scratch.
+    const cellsKey = cells ? [...cells].map(([r, c]) => cellKey(r, c)).sort().join('|') : null
+    const result = checkPlacement(cells, filledYou, DEV_ROWS, cellsKey != null && pendingFairPlay?.key === cellsKey)
     if (!result.ok) {
       if (result.needsFairPlay) {
         const fp = engine.respondToFairPlay(result.overhangRatio ?? 0)
         pushLog(`Fair-play check (${Math.round((result.overhangRatio ?? 0) * 100)}% unsupported): opponent says "${fp.message}"`)
-        if (fp.kind === 'fair_play_response' && fp.approve) {
-          setPendingFairPlay({ cells: result.cells ?? null })
+        if (fp.kind === 'fair_play_response' && fp.approve && cellsKey != null) {
+          setPendingFairPlay({ key: cellsKey })
           setResponse(`${result.reason} — opponent agreed via fair play. Submit again to confirm.`)
         } else {
+          setPendingFairPlay(null)
           setResponse(`${result.reason} — opponent declined fair play. Choose a different placement.`)
         }
         return
       }
+      setPendingFairPlay(null)
       setResponse(`Invalid: ${result.reason}`)
       return
     }
