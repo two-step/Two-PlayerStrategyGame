@@ -19,38 +19,38 @@ type Page = 'home' | 'figures' | 'rules' | 'lore' | 'play' | 'practice' | 'sandb
 type Cells = [number, number][]
 
 interface Figure {
-  id: number; name: string; label: string; cells: Cells; size: number
+  id: number; name: string; label: string; cells: Cells; size: number; dots: number[]
 }
 
 // ── 27 Figures (source: otgruzka_figures.json, confirmed) ────────────────────
 const FIGURES: Figure[] = [
-  { id:  1, name: 'Mono',        label: 'F01', size: 1, cells: [[0,0]] },
-  { id:  2, name: 'Domino',      label: 'F02', size: 2, cells: [[0,0],[0,1]] },
-  { id:  3, name: 'Tromino-I',   label: 'F03', size: 3, cells: [[0,0],[0,1],[0,2]] },
-  { id:  4, name: 'Tetromino-I', label: 'F04', size: 4, cells: [[0,0],[0,1],[0,2],[0,3]] },
-  { id:  5, name: 'Pentomino-I', label: 'F05', size: 5, cells: [[0,0],[0,1],[0,2],[0,3],[0,4]] },
-  { id:  6, name: 'Tromino-L',   label: 'F06', size: 3, cells: [[0,0],[1,0],[1,1]] },
-  { id:  7, name: 'Tetromino-O', label: 'F07', size: 4, cells: [[0,0],[0,1],[1,0],[1,1]] },
-  { id:  8, name: 'Tetromino-L', label: 'F08', size: 4, cells: [[0,0],[1,0],[2,0],[2,1]] },
-  { id:  9, name: 'Tetromino-J', label: 'F09', size: 4, cells: [[0,1],[1,1],[2,0],[2,1]] },
-  { id: 10, name: 'Pentomino-F', label: 'F10', size: 5, cells: [[0,1],[0,2],[1,1],[2,0],[2,1]] },
-  { id: 11, name: 'Pentomino-W', label: 'F11', size: 5, cells: [[0,0],[0,1],[1,1],[2,1],[2,2]] },
-  { id: 12, name: 'Tetromino-S', label: 'F12', size: 4, cells: [[0,1],[0,2],[1,0],[1,1]] },
-  { id: 13, name: 'Tetromino-Z', label: 'F13', size: 4, cells: [[0,0],[0,1],[1,1],[1,2]] },
-  { id: 14, name: 'Tetromino-T', label: 'F14', size: 4, cells: [[0,1],[1,0],[1,1],[1,2]] },
-  { id: 15, name: 'Pentomino-U', label: 'F15', size: 5, cells: [[0,0],[0,1],[0,2],[1,0],[1,2]] },
-  { id: 16, name: 'Pentomino-X', label: 'F16', size: 5, cells: [[0,1],[1,0],[1,1],[1,2],[2,1]] },
-  { id: 17, name: 'Pentomino-V', label: 'F17', size: 5, cells: [[0,0],[0,1],[0,2],[1,0],[2,0]] },
-  { id: 18, name: 'Hexomino-C',  label: 'F18', size: 6, cells: [[0,0],[1,0],[1,1],[1,2],[2,0],[2,2]] },
-  { id: 19, name: 'Hexomino-B',  label: 'F19', size: 6, cells: [[0,2],[1,0],[1,1],[1,2],[2,0],[2,2]] },
-  { id: 20, name: 'Pentomino-N', label: 'F20', size: 5, cells: [[0,1],[0,2],[1,0],[1,1],[2,0]] },
-  { id: 21, name: 'Pentomino-R', label: 'F21', size: 5, cells: [[0,1],[1,0],[1,1],[1,2],[2,2]] },
-  { id: 22, name: 'Pentomino-Y', label: 'F22', size: 5, cells: [[0,1],[1,0],[1,1],[1,2],[2,0]] },
-  { id: 23, name: 'Hexomino-H',  label: 'F23', size: 6, cells: [[0,1],[1,0],[1,1],[1,2],[2,0],[2,2]] },
-  { id: 24, name: 'Pentomino-T', label: 'F24', size: 5, cells: [[0,1],[1,1],[2,0],[2,1],[2,2]] },
-  { id: 25, name: 'Heptomino-H', label: 'F25', size: 7, cells: [[0,0],[0,2],[1,0],[1,1],[1,2],[2,0],[2,2]] },
-  { id: 26, name: 'Hexomino-P',  label: 'F26', size: 6, cells: [[0,0],[0,1],[0,2],[0,3],[1,1],[1,3]] },
-  { id: 27, name: 'Hexomino-Q',  label: 'F27', size: 6, cells: [[0,0],[0,1],[0,2],[0,3],[1,0],[1,2]] },
+  { id:  1, name: 'Mono', label: 'F01', size: 1, cells: [[0,0]], dots: [0] },
+  { id:  2, name: 'Domino', label: 'F02', size: 2, cells: [[0,0],[0,1]], dots: [0, 1] },
+  { id:  3, name: 'Tromino-I', label: 'F03', size: 3, cells: [[0,0],[0,1],[0,2]], dots: [0, 2] },
+  { id:  4, name: 'Tetromino-I', label: 'F04', size: 4, cells: [[0,0],[0,1],[0,2],[0,3]], dots: [0, 3] },
+  { id:  5, name: 'Pentomino-I', label: 'F05', size: 5, cells: [[0,0],[0,1],[0,2],[0,3],[0,4]], dots: [0, 4] },
+  { id:  6, name: 'Tromino-L', label: 'F06', size: 3, cells: [[0,0],[1,0],[1,1]], dots: [0, 2] },
+  { id:  7, name: 'Tetromino-O', label: 'F07', size: 4, cells: [[0,0],[0,1],[1,0],[1,1]], dots: [0, 3] },
+  { id:  8, name: 'Tetromino-L', label: 'F08', size: 4, cells: [[0,0],[1,0],[2,0],[2,1]], dots: [0, 3] },
+  { id:  9, name: 'Tetromino-J', label: 'F09', size: 4, cells: [[0,1],[1,1],[2,0],[2,1]], dots: [0, 2] },
+  { id: 10, name: 'Pentomino-F', label: 'F10', size: 5, cells: [[0,1],[0,2],[1,1],[2,0],[2,1]], dots: [1, 3] },
+  { id: 11, name: 'Pentomino-W', label: 'F11', size: 5, cells: [[0,0],[0,1],[1,1],[2,1],[2,2]], dots: [0, 4] },
+  { id: 12, name: 'Tetromino-S', label: 'F12', size: 4, cells: [[0,1],[0,2],[1,0],[1,1]], dots: [1, 2] },
+  { id: 13, name: 'Tetromino-Z', label: 'F13', size: 4, cells: [[0,0],[0,1],[1,1],[1,2]], dots: [0, 3] },
+  { id: 14, name: 'Tetromino-T', label: 'F14', size: 4, cells: [[0,1],[1,0],[1,1],[1,2]], dots: [0, 3] },
+  { id: 15, name: 'Pentomino-U', label: 'F15', size: 5, cells: [[0,0],[0,1],[0,2],[1,0],[1,2]], dots: [0, 4] },
+  { id: 16, name: 'Pentomino-X', label: 'F16', size: 5, cells: [[0,1],[1,0],[1,1],[1,2],[2,1]], dots: [2] },
+  { id: 17, name: 'Pentomino-V', label: 'F17', size: 5, cells: [[0,0],[0,1],[0,2],[1,0],[2,0]], dots: [2, 4] },
+  { id: 18, name: 'Hexomino-C', label: 'F18', size: 6, cells: [[0,0],[1,0],[1,1],[1,2],[2,0],[2,2]], dots: [0, 5] },
+  { id: 19, name: 'Hexomino-B', label: 'F19', size: 6, cells: [[0,2],[1,0],[1,1],[1,2],[2,0],[2,2]], dots: [0, 4] },
+  { id: 20, name: 'Pentomino-N', label: 'F20', size: 5, cells: [[0,1],[0,2],[1,0],[1,1],[2,0]], dots: [1, 4] },
+  { id: 21, name: 'Pentomino-R', label: 'F21', size: 5, cells: [[0,1],[1,0],[1,1],[1,2],[2,2]], dots: [0, 4] },
+  { id: 22, name: 'Pentomino-Y', label: 'F22', size: 5, cells: [[0,1],[1,0],[1,1],[1,2],[2,0]], dots: [0, 4] },
+  { id: 23, name: 'Hexomino-H', label: 'F23', size: 6, cells: [[0,1],[1,0],[1,1],[1,2],[2,0],[2,2]], dots: [0, 5] },
+  { id: 24, name: 'Pentomino-T', label: 'F24', size: 5, cells: [[0,1],[1,1],[2,0],[2,1],[2,2]], dots: [0, 4] },
+  { id: 25, name: 'Heptomino-H', label: 'F25', size: 7, cells: [[0,0],[0,2],[1,0],[1,1],[1,2],[2,0],[2,2]], dots: [0, 6] },
+  { id: 26, name: 'Hexomino-P', label: 'F26', size: 6, cells: [[0,0],[0,1],[0,2],[0,3],[1,1],[1,3]], dots: [0, 5] },
+  { id: 27, name: 'Hexomino-Q', label: 'F27', size: 6, cells: [[0,0],[0,1],[0,2],[0,3],[1,0],[1,2]], dots: [3, 4] },
 ]
 
 // ── Tiers (PairSec_Спецификация_Final_2026.docx §7.1.6) ───────────────────────
@@ -116,24 +116,50 @@ function getOrientations(cells: Cells): Cells[] {
 // ── FigurePreview — uniform CELL_PX across all figures ───────────────────────
 const CELL_PX = 14
 
-function FigurePreview({ cells, cardSize = 72, color = C.cyan, cellPx = CELL_PX }: {
-  cells: Cells; cardSize?: number; color?: string; cellPx?: number
+function FigurePreview({ cells, cardSize = 72, color = C.cyan, cellPx = CELL_PX, dots = [], number, showNumber = true }: {
+  cells: Cells; cardSize?: number; color?: string; cellPx?: number; dots?: number[]; number?: number | string; showNumber?: boolean
 }) {
   if (!cells.length) return null
   const rows = cells.map(([r]) => r), cols = cells.map(([, c]) => c)
   const minR = Math.min(...rows), maxR = Math.max(...rows)
   const minC = Math.min(...cols), maxC = Math.max(...cols)
   const numR = maxR - minR + 1, numC = maxC - minC + 1
-  const figW = numC * cellPx, figH = numR * cellPx
+  // Never let a wide/tall figure overflow its card — shrink to fit, but never enlarge
+  // past the caller's requested cellPx (fixes F04/F05/F26/F27 clipping their own number/cells).
+  const fitCellPx = Math.min(cellPx, cardSize / Math.max(numR, numC))
+  const figW = numC * fitCellPx, figH = numR * fitCellPx
   const ox = (cardSize - figW) / 2, oy = (cardSize - figH) / 2
+  const dotSet = new Set(dots)
+  const dotR = Math.max(1, fitCellPx * 0.13)
+  // Part L — every figure carries its number and reference dot(s) on the shape itself
+  // (source: otgruzka_figures.json id + reference_dots), not just as a caption beside it.
+  const fontSize = Math.max(6, Math.min(fitCellPx * 0.6, 11))
+  const canShowNumber = showNumber && number != null && fitCellPx * Math.min(numR, numC) >= 8
+  // Anchor the number to the card's own top-left corner, clamped on-canvas, rather than the
+  // shape's bounding box — ox/oy can go negative for shapes that fully span the card.
+  const numX = Math.max(1.5, ox + 1.5)
+  const numY = Math.max(fontSize + 0.5, oy + fontSize + 0.5)
   return (
     <svg width={cardSize} height={cardSize} style={{ display: 'block', flexShrink: 0 }}>
       {cells.map(([r, c], i) => (
         <rect key={i}
-          x={ox + (c - minC) * cellPx + 0.75} y={oy + (r - minR) * cellPx + 0.75}
-          width={cellPx - 1.5} height={cellPx - 1.5}
+          x={ox + (c - minC) * fitCellPx + 0.75} y={oy + (r - minR) * fitCellPx + 0.75}
+          width={fitCellPx - 1.5} height={fitCellPx - 1.5}
           fill={`${color}18`} stroke={color} strokeWidth={1.5} rx={0} />
       ))}
+      {cells.map(([r, c], i) => dotSet.has(i) ? (
+        <circle key={`dot-${i}`}
+          cx={ox + (c - minC) * fitCellPx + fitCellPx / 2}
+          cy={oy + (r - minR) * fitCellPx + fitCellPx / 2}
+          r={dotR} fill={color} />
+      ) : null)}
+      {canShowNumber && (
+        <text x={numX} y={numY}
+          fontFamily="'JetBrains Mono',monospace" fontSize={fontSize} fontWeight={700}
+          fill={color} style={{ paintOrder: 'stroke', stroke: C.graphite, strokeWidth: fontSize * 0.22 }}>
+          {number}
+        </text>
+      )}
     </svg>
   )
 }
@@ -384,12 +410,11 @@ function RowIcon({ size = 64, color = C.green }: { size?: number; color?: string
 
 // ── Hero state ────────────────────────────────────────────────────────────────
 function buildHeroCells() {
+  // Part F: entry (col 0) must stay low and unremarkable — no teaching scenario at A0.
   const s = new Set<string>()
   for (let c = 0; c < 15; c++) s.add(`10,${c}`)
-  for (let c = 0; c <= 10; c++) s.add(`9,${c}`)
-  for (let c = 0; c <= 6; c++) s.add(`8,${c}`)
-  for (let c = 0; c <= 3; c++) s.add(`7,${c}`)
-  for (let c = 0; c <= 1; c++) s.add(`6,${c}`)
+  for (let c = 6; c <= 13; c++) s.add(`9,${c}`)
+  for (let c = 9; c <= 11; c++) s.add(`8,${c}`)
   return s
 }
 const HERO_CELLS = buildHeroCells()
@@ -586,7 +611,7 @@ function HomePage({ setPage }: { setPage: (p: Page) => void }) {
             <div style={{ border: `1px solid ${C.blue}55`, padding: '7px 12px', background: `${C.blue}18` }}
               className="flex items-center gap-3 w-full">
               <span style={{ color: C.steelDim, fontSize: 10, fontFamily: "'JetBrains Mono',monospace" }}>INCOMING</span>
-              <FigurePreview cells={FIGURES[13].cells} cardSize={32} color={C.cyan} />
+              <FigurePreview cells={FIGURES[13].cells} cardSize={32} color={C.cyan} dots={FIGURES[13].dots} number={FIGURES[13].id} />
               <span style={{ color: C.cyan, fontSize: 11, fontFamily: "'JetBrains Mono',monospace" }}>F14 — chosen by opponent</span>
             </div>
           </div>
@@ -655,7 +680,7 @@ function HomePage({ setPage }: { setPage: (p: Page) => void }) {
               <div key={fig.id} onClick={() => setPage('figures')}
                 style={{ border: `1px solid ${C.cyan}22`, background: C.graphite, cursor: 'pointer' }}
                 className="aspect-square flex flex-col items-center justify-center gap-1 hover:border-cyan-400/50 transition-all p-1">
-                <FigurePreview cells={fig.cells} cardSize={48} color={C.cyan} />
+                <FigurePreview cells={fig.cells} cardSize={48} color={C.cyan} dots={fig.dots} number={fig.id} />
                 <span style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 8 }}>{fig.label}</span>
               </div>
             ))}
@@ -868,7 +893,7 @@ function FiguresPage() {
             <button key={fig.id} onClick={() => { setSelected(fig); setOrientation(0) }}
               style={{ border: `1px solid ${selected?.id === fig.id ? C.cyan : `${C.cyan}22`}`, background: selected?.id === fig.id ? `${C.cyan}18` : C.graphite2, transition: 'all 0.15s' }}
               className="aspect-square flex flex-col items-center justify-center gap-1 p-2 hover:border-cyan-400/60">
-              <FigurePreview cells={fig.cells} cardSize={52} color={selected?.id === fig.id ? C.cyan : `${C.cyan}90`} />
+              <FigurePreview cells={fig.cells} cardSize={52} color={selected?.id === fig.id ? C.cyan : `${C.cyan}90`} dots={fig.dots} number={fig.id} />
               <span style={{ color: selected?.id === fig.id ? C.cyan : C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 8 }}>{fig.label}</span>
             </button>
           ))}
@@ -883,7 +908,7 @@ function FiguresPage() {
                   <span style={{ color: C.steelDim, fontSize: 13 }}>{selected.size} {selected.size === 1 ? 'cell' : 'cells'}</span>
                 </div>
                 <div style={{ border: `1px solid ${C.cyan}22`, background: C.graphite, display: 'inline-block', padding: 20 }}>
-                  <FigurePreview cells={selected.cells} cardSize={120} color={C.cyan} cellPx={20} />
+                  <FigurePreview cells={selected.cells} cardSize={120} color={C.cyan} cellPx={20} dots={selected.dots} number={selected.id} />
                 </div>
               </div>
               <div>
@@ -893,7 +918,7 @@ function FiguresPage() {
                     <button key={i} onClick={() => setOrientation(i)}
                       style={{ border: `1px solid ${orientation === i ? C.cyan : `${C.cyan}25`}`, background: orientation === i ? `${C.cyan}18` : C.graphite, transition: 'all 0.15s' }}
                       className="p-2 flex flex-col items-center gap-1">
-                      <FigurePreview cells={cells} cardSize={72} color={orientation === i ? C.cyan : `${C.cyan}80`} cellPx={16} />
+                      <FigurePreview cells={cells} cardSize={72} color={orientation === i ? C.cyan : `${C.cyan}80`} cellPx={16} dots={selected.dots} number={selected.id} />
                       <span style={{ color: orientation === i ? C.cyan : C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 9 }}>{i * 90}°</span>
                     </button>
                   ))}
@@ -1156,7 +1181,7 @@ function PlayPage({ mode = 'rated' }: { mode?: 'rated' | 'practice' }) {
               {FIGURES.map(fig => (
                 <div key={fig.id} title={fig.name}
                   style={{ border: `1px solid ${LOADED_IDS.has(fig.id) ? C.steelDim + '40' : C.cyan + '40'}`, background: LOADED_IDS.has(fig.id) ? C.graphite : `${C.cyan}10`, opacity: LOADED_IDS.has(fig.id) ? 0.3 : 1 }}>
-                  <FigurePreview cells={fig.cells} cardSize={34} color={LOADED_IDS.has(fig.id) ? C.steelDim : C.cyan} cellPx={6} />
+                  <FigurePreview cells={fig.cells} cardSize={34} color={LOADED_IDS.has(fig.id) ? C.steelDim : C.cyan} cellPx={6} dots={fig.dots} number={fig.id} />
                 </div>
               ))}
             </div>
@@ -1169,7 +1194,7 @@ function PlayPage({ mode = 'rated' }: { mode?: 'rated' | 'practice' }) {
           <div style={{ border: `1px solid ${C.cyan}40`, background: C.graphite2 }} className="p-5">
             <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 12 }}>INCOMING CARGO</p>
             <div style={{ background: C.graphite, border: `1px solid ${C.cyan}22`, padding: 14 }} className="flex items-center justify-center mb-4">
-              <FigurePreview cells={curOri} cardSize={90} color={C.cyan} cellPx={16} />
+              <FigurePreview cells={curOri} cardSize={90} color={C.cyan} cellPx={16} dots={incomingFig.dots} number={incomingFig.id} />
             </div>
             <div className="mb-3">
               <span style={{ color: C.deck, fontFamily: "'JetBrains Mono',monospace", fontSize: 13 }}>{incomingFig.label} — {incomingFig.name}</span>
@@ -1197,7 +1222,7 @@ function PlayPage({ mode = 'rated' }: { mode?: 'rated' | 'practice' }) {
                 <button key={fig.id} title={`${fig.label} ${fig.name}`}
                   style={{ border: `1px solid ${C.blue}35`, background: 'transparent', opacity: fig.id === 7 ? 0.3 : 1 }}
                   disabled={fig.id === 7}>
-                  <FigurePreview cells={fig.cells} cardSize={30} color={C.steelDim} cellPx={5} />
+                  <FigurePreview cells={fig.cells} cardSize={30} color={C.steelDim} cellPx={5} dots={fig.dots} number={fig.id} />
                 </button>
               ))}
             </div>
@@ -1225,11 +1250,11 @@ function PracticePage() { return <PlayPage mode="practice" /> }
 
 // ── Sandbox Page ──────────────────────────────────────────────────────────────
 function buildSandboxDemo() {
+  // Part F: entry (col 0) must stay low and unremarkable — no teaching scenario at A0.
   const s = new Set<string>()
   for (let c = 0; c < 15; c++) s.add(`10,${c}`)
-  for (let c = 0; c <= 11; c++) s.add(`9,${c}`)
-  for (let c = 0; c <= 7; c++) s.add(`8,${c}`)
-  for (let c = 0; c <= 4; c++) s.add(`7,${c}`)
+  for (let c = 4; c <= 11; c++) s.add(`9,${c}`)
+  for (let c = 6; c <= 7; c++) s.add(`8,${c}`)
   for (let c = 12; c <= 14; c++) { for (let r = 5; r <= 10; r++) s.add(`${r},${c}`) }
   return s
 }
@@ -1326,7 +1351,7 @@ function SandboxPage() {
               <div style={{ border: `1px solid ${C.cyan}30`, background: C.graphite, padding: 12, marginBottom: 12 }}>
                 <span style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, display: 'block', marginBottom: 8 }}>{fig.label} — {fig.name}</span>
                 <div className="flex items-center justify-center mb-3">
-                  <FigurePreview cells={cur} cardSize={72} color={C.cyan} cellPx={14} />
+                  <FigurePreview cells={cur} cardSize={72} color={C.cyan} cellPx={14} dots={fig.dots} number={fig.id} />
                 </div>
                 <div className="flex gap-2 justify-center">
                   {oris.map((_, i) => (
@@ -1344,7 +1369,7 @@ function SandboxPage() {
               <button key={fig.id} onClick={() => { setSelectedFigId(fig.id); setOriIdx(0) }} title={fig.name}
                 style={{ border: `1px solid ${selectedFigId === fig.id ? C.cyan : C.steelDim + '30'}`, background: selectedFigId === fig.id ? `${C.cyan}18` : 'transparent' }}
                 className="p-1 hover:border-cyan-400/50 transition-all">
-                <FigurePreview cells={fig.cells} cardSize={36} color={selectedFigId === fig.id ? C.cyan : C.steelDim} cellPx={6} />
+                <FigurePreview cells={fig.cells} cardSize={36} color={selectedFigId === fig.id ? C.cyan : C.steelDim} cellPx={6} dots={fig.dots} number={fig.id} />
               </button>
             ))}
           </div>
@@ -1588,7 +1613,7 @@ function PrintPlayPage() {
           <div className="grid grid-cols-5 sm:grid-cols-7 md:grid-cols-9 gap-2 mb-5">
             {FIGURES.map(fig => (
               <div key={fig.id} style={{ border: `1px solid ${C.cyan}18`, background: C.graphite, padding: 4 }} className="flex flex-col items-center gap-1">
-                <FigurePreview cells={fig.cells} cardSize={44} color={C.cyan} />
+                <FigurePreview cells={fig.cells} cardSize={44} color={C.cyan} dots={fig.dots} number={fig.id} />
                 <span style={{ color: C.steelDim, fontSize: 8, fontFamily: "'JetBrains Mono',monospace" }}>{fig.label}</span>
                 <span style={{ color: C.steelDim, fontSize: 7, textAlign: 'center', lineHeight: 1.3 }}>{fig.name}</span>
               </div>

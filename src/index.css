@@ -40,3 +40,10 @@ body {
 ::-webkit-scrollbar-thumb {
   background: var(--color-stow-blue);
 }
+
+button:not(:disabled) {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+}
