@@ -200,6 +200,7 @@ function ContainerGrid({
   onCellClick,
   pieces = [],
   ghostCells,
+  ghostValid = true,
   markCells,
 }: {
   filledCells: Set<string>; closedRows?: Set<number>; cellSize?: number
@@ -211,6 +212,9 @@ function ContainerGrid({
   pieces?: { id: number | string; cells: Cells; dotIdx: number[] }[]
   // Faint dashed outline of where a click-to-place selection would land (item 8 follow-up).
   ghostCells?: Set<string>
+  // Whether that outline represents a placement that would actually pass checkPlacement —
+  // false renders it in red instead of cyan, so an erroneous click-selection reads as invalid.
+  ghostValid?: boolean
   // Small filled dots marking the cell(s) the player has clicked so far, before the
   // second point (or confirmation) completes the placement.
   markCells?: { r: number; c: number }[]
@@ -278,10 +282,11 @@ function ContainerGrid({
       })}
       {ghostCells && Array.from(ghostCells).map(key => {
         const [r, c] = key.split(',').map(Number)
+        const ghostColor = ghostValid ? C.cyan : C.red
         return (
           <rect key={`ghost-${key}`} x={c * cellSize + 1.5} y={r * cellSize + 1.5}
             width={cellSize - 3} height={cellSize - 3}
-            fill="none" stroke={C.cyan} strokeWidth={1.25} strokeDasharray="3 2" opacity={0.6} />
+            fill="none" stroke={ghostColor} strokeWidth={1.25} strokeDasharray="3 2" opacity={0.6} />
         )
       })}
       {markCells?.map((p, i) => (
@@ -1839,14 +1844,23 @@ function DevTestPage() {
 
   // Faint outline of where the current click-selection (or its rotation) would land —
   // "слабо видимые контуры фигуры" — purely visual, Submit still does the real check.
-  const ghostCells = useMemo(() => {
-    if (!incomingFig || clickPoints.length < pointsNeeded) return undefined
+  const ghostPlacement = useMemo(() => {
+    if (!incomingFig || clickPoints.length < pointsNeeded) return null
     const ordered = [...clickPoints.slice(0, pointsNeeded)].sort((a, b) => a.c - b.c || a.r - b.r)
     const cells = pointsNeeded === 2
       ? computePlacementFromDots(incomingFig, ordered)
       : computePlacementFromAnchor(incomingFig, rotIdx, ordered[0])
-    return cells ? new Set(cells.map(([r, c]) => cellKey(r, c))) : undefined
-  }, [incomingFig, clickPoints, pointsNeeded, rotIdx])
+    if (!cells) return null
+    // Same check submitPlacement will run — lets the ghost outline itself turn red
+    // when the current click-selection would actually be rejected.
+    const valid = checkPlacement(cells, filledYou, DEV_ROWS).ok
+    return { set: new Set(cells.map(([r, c]) => cellKey(r, c))), valid }
+  }, [incomingFig, clickPoints, pointsNeeded, rotIdx, filledYou])
+  const ghostCells = ghostPlacement?.set
+  const ghostValid = ghostPlacement?.valid ?? true
+  // Response text is user-facing plain text, not a tagged object — detect the error/decline
+  // cases by their known wording so the Response field can render them in red.
+  const responseIsError = /^Invalid:/.test(response) || /declined fair play/.test(response)
 
   function handleYourContainerClick(r: number, c: number) {
     if (!incomingFig || gameOver) return
@@ -2002,7 +2016,7 @@ function DevTestPage() {
               <ContainerGrid filledCells={filledYou} closedRows={closedYou} cellSize={24} rows={DEV_ROWS}
                 pieces={piecesYou}
                 onCellClick={incomingFig && !gameOver ? handleYourContainerClick : undefined}
-                ghostCells={ghostCells} markCells={clickPoints} />
+                ghostCells={ghostCells} ghostValid={ghostValid} markCells={clickPoints} />
             </div>
           </div>
 
@@ -2039,11 +2053,11 @@ function DevTestPage() {
                 const used = usedIds.has(fig.id)
                 const requestable = requester === 'you' && !gameOver && !incomingFig && !used && fig.id !== lastRequestToYou
                 return (
-                  <button key={fig.id} title={`${fig.label} ${fig.name}${fig.id === lastRequestToYou ? ' (repeat-request blocked)' : ''}`}
+                  <button key={fig.id} title={`${fig.label} ${fig.name}${used ? ' (already used)' : fig.id === lastRequestToYou ? ' (repeat-request blocked)' : !requestable ? ' (not your turn to request)' : ''}`}
                     onClick={requestable ? () => requestForOpp(fig) : undefined}
                     disabled={!requestable}
-                    style={{ border: `1px solid ${used ? C.steelDim + '30' : C.cyan + '40'}`, background: used ? C.graphite : 'transparent', opacity: used ? 0.25 : 1, cursor: requestable ? 'pointer' : 'default' }}>
-                    <FigurePreview cells={fig.cells} cardSize={32} color={used ? C.steelDim : C.cyan} cellPx={6} dots={fig.dots} showNumber={false} />
+                    style={{ border: `1px solid ${used ? C.steelDim + '30' : requestable ? C.cyan + '40' : C.steelDim + '40'}`, background: used ? C.graphite : 'transparent', opacity: used ? 0.25 : requestable ? 1 : 0.4, cursor: requestable ? 'pointer' : 'default' }}>
+                    <FigurePreview cells={fig.cells} cardSize={32} color={used ? C.steelDim : requestable ? C.cyan : C.steelDim} cellPx={6} dots={fig.dots} showNumber={false} />
                   </button>
                 )
               })}
@@ -2101,7 +2115,7 @@ function DevTestPage() {
             </div>
             <p style={{ color: C.steelDim, fontSize: 11, marginBottom: 4 }}>Response:</p>
             <input value={response} disabled readOnly
-              style={{ width: '100%', background: C.graphite, border: `1px solid ${C.steelDim}40`, color: C.steel, fontFamily: "'JetBrains Mono',monospace", fontSize: 12, padding: '8px 10px' }} />
+              style={{ width: '100%', background: C.graphite, border: `1px solid ${responseIsError ? C.red : C.steelDim}40`, color: responseIsError ? C.red : C.steel, fontFamily: "'JetBrains Mono',monospace", fontSize: 12, padding: '8px 10px' }} />
           </div>
 
           <div style={{ border: `1px solid ${C.steelDim}25`, background: C.graphite2 }} className="p-5">
