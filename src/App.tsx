@@ -2104,7 +2104,7 @@ function DevTestPage() {
                 <span style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>YOUR CONTAINER — {DEV_ROWS} rows, {closedYou.size} closed</span>
                 {incomingFig && !gameOver && (
                   <span style={{ color: C.steelDim, fontSize: 11 }}>
-                    Click {pointsNeeded === 2 ? 'point 1, then point 2' : 'a point'} below to fill the request field ({clickPoints.length}/{pointsNeeded})
+                    Click {pointsNeeded === 2 ? 'the two reference points, in any order — the leftmost becomes dot 1 automatically' : 'a point'} below to fill the request field ({clickPoints.length}/{pointsNeeded})
                     {clickPoints.length > 0 && (
                       <button onClick={() => setClickPoints([])} style={{ color: C.red, marginLeft: 8, textDecoration: 'underline' }}>clear</button>
                     )}
