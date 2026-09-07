@@ -1897,11 +1897,18 @@ function DevTestPage() {
     if (!cells) return null
     // Same check submitPlacement will run — lets the ghost outline itself turn red
     // when the current click-selection would actually be rejected.
-    const valid = checkPlacement(cells, filledYou, DEV_ROWS).ok
-    return { set: new Set(cells.map(([r, c]) => cellKey(r, c))), valid }
+    const result = checkPlacement(cells, filledYou, DEV_ROWS)
+    // A placement that goes outside the container has cell coordinates outside the grid
+    // itself — drawing that outline would spill the dashed rect past the container's own
+    // border. Don't draw it; say so instead.
+    if (!result.ok && result.reason === 'Placement goes outside the container') {
+      return { set: undefined, valid: false, outOfBoundsMessage: result.reason }
+    }
+    return { set: new Set(cells.map(([r, c]) => cellKey(r, c))), valid: result.ok, outOfBoundsMessage: undefined }
   }, [incomingFig, clickPoints, pointsNeeded, rotIdx, filledYou])
   const ghostCells = ghostPlacement?.set
   const ghostValid = ghostPlacement?.valid ?? true
+  const ghostOutOfBoundsMessage = ghostPlacement?.outOfBoundsMessage
   // Response text is user-facing plain text, not a tagged object — detect the error/decline
   // cases by their known wording so the Response field can render them in red.
   const responseIsError = /^Invalid:/.test(response) || /declined fair play/.test(response)
@@ -2058,6 +2065,9 @@ function DevTestPage() {
                     {clickPoints.length > 0 && (
                       <button onClick={() => setClickPoints([])} style={{ color: C.red, marginLeft: 8, textDecoration: 'underline' }}>clear</button>
                     )}
+                    {ghostOutOfBoundsMessage && (
+                      <span style={{ color: C.red, marginLeft: 8 }}>— {ghostOutOfBoundsMessage}</span>
+                    )}
                   </span>
                 )}
               </div>
@@ -2070,7 +2080,7 @@ function DevTestPage() {
             </div>
 
             <FigureBankPanel
-              title="OPPONENT FIGURES — opponent picks from here to fill your container above; view only"
+              title="LOADED BY YOU · PICKED BY OPPONENT — view only, shared pool"
               panelColor={C.steelDim} itemColor={C.steel}
               getStatus={fig => ({
                 used: usedIds.has(fig.id), actionable: true,
@@ -2087,7 +2097,7 @@ function DevTestPage() {
             </div>
 
             <FigureBankPanel
-              title={`MY FIGURES ${requester === 'you' && !gameOver && !incomingFig ? "— click one to fill the opponent's container above" : "— fills the opponent's container above"}`}
+              title={`LOADED BY OPPONENT · PICKED BY YOU${requester === 'you' && !gameOver && !incomingFig ? ' — click one to choose' : ''}`}
               panelColor={C.blue} itemColor={C.cyan} onSelect={requestForOpp}
               getStatus={fig => {
                 const used = usedIds.has(fig.id)
