@@ -11,10 +11,14 @@
 //    a real backend or Telegram bot — see the note at the bottom)
 //  - aware of opponent qualification tier (a tier can be mapped to a difficulty)
 //  - gives the human player a real chance to win — ~30% engine win rate is the
-//    starting target at "medium" difficulty, per the owner's TO_DO note. This is
-//    a TUNABLE KNOB (`targetWinRate` below controls how often the engine plays
-//    its best-scoring move vs. a random legal one), not a proven statistical
-//    guarantee — it needs real playtesting/simulation to calibrate properly.
+//    starting target at "medium" difficulty, per the owner's TO_DO note.
+//    Placement is deterministic, not a random/best-move coin flip: every
+//    difficulty scans legal placements in the same human-like order (from the
+//    far end of the floor row toward the A0 entrance, bottom row before moving
+//    up) and differs only in how many of those it's willing to compare before
+//    committing -- see decidePlacement below. `targetWinRate` is still exposed
+//    as a descriptive label, not a proven statistical guarantee -- actual win
+//    rates need real playtesting/simulation to calibrate.
 //  - includes a legality checker (delegates to rules.ts) and fair-play handling
 //  - clean, encapsulated output interface: every decision is a small, named,
 //    serializable object (EngineDecision), not a direct UI/DOM call — see the
@@ -34,12 +38,12 @@ export const TIER_DIFFICULTY: Record<string, Difficulty> = {
   LeadLod: 'hard', MasterLod: 'hard', ProfiLod: 'hard',
 }
 
-interface Preset { greedyProb: number; targetWinRate: number; fairPlayThreshold: number }
+interface Preset { targetWinRate: number; fairPlayThreshold: number }
 
 const PRESETS: Record<Difficulty, Preset> = {
-  easy:   { greedyProb: 0.25, targetWinRate: 0.15, fairPlayThreshold: 0.75 },
-  medium: { greedyProb: 0.55, targetWinRate: 0.30, fairPlayThreshold: 0.65 }, // TO_DO item 7 baseline
-  hard:   { greedyProb: 0.85, targetWinRate: 0.55, fairPlayThreshold: 0.55 },
+  easy:   { targetWinRate: 0.15, fairPlayThreshold: 0.75 },
+  medium: { targetWinRate: 0.30, fairPlayThreshold: 0.65 }, // TO_DO item 7 baseline
+  hard:   { targetWinRate: 0.55, fairPlayThreshold: 0.55 },
 }
 
 const PHRASES = {
@@ -75,6 +79,40 @@ export interface OpponentEngine {
   respondToFairPlay(overhangRatioValue: number): EngineDecision
 }
 
+// Scans legal placements the way a competent human would: start at the far end of
+// the floor row (deepest into the container, away from the A0 entrance at the
+// bottom-left) and sweep back toward the entrance, only spilling onto the row
+// above once the one below is effectively full. This is purely an ORDERING over
+// placements `enumeratePlacements` already confirmed legal -- it doesn't judge
+// quality, `scorePlacement` still does that where a tier calls for it.
+function orderCandidatesLikeAHuman(candidates: Cells[]): Cells[] {
+  const key = (cells: Cells): [number, number] => [
+    Math.max(...cells.map(([r]) => r)), // higher r = closer to the floor row
+    Math.max(...cells.map(([, c]) => c)), // higher c = farther from the A0 entrance
+  ]
+  return [...candidates].sort((a, b) => {
+    const [ar, ac] = key(a)
+    const [br, bc] = key(b)
+    return br - ar || bc - ac
+  })
+}
+
+// Every difficulty picks from the SAME scan order above -- what changes is how many
+// of those candidates it bothers comparing before committing, per the owner's spec:
+// easy takes the first playable spot it finds, medium compares the first two and
+// takes whichever is actually better, hard evaluates every legal placement and takes
+// the single best -- still a static, one-ply score, never a simulation of future
+// moves.
+function pickByTier(difficulty: Difficulty, ordered: Cells[], filled: Set<string>, rows: number): Cells {
+  if (difficulty === 'easy') return ordered[0]
+  if (difficulty === 'medium') {
+    const first = ordered[0]
+    const second = ordered[1]
+    return second && scorePlacement(second, filled, rows) > scorePlacement(first, filled, rows) ? second : first
+  }
+  return ordered.reduce((best, c) => (scorePlacement(c, filled, rows) > scorePlacement(best, filled, rows) ? c : best))
+}
+
 export function createOpponentEngine(config: EngineConfig): OpponentEngine {
   const preset = PRESETS[config.difficulty]
   const targetWinRate = config.targetWinRate ?? preset.targetWinRate
@@ -94,10 +132,8 @@ export function createOpponentEngine(config: EngineConfig): OpponentEngine {
     decidePlacement(figure, filled, rows) {
       const candidates = enumeratePlacements(figure, filled, rows)
       if (!candidates.length) return { kind: 'pass', message: pick(PHRASES.noMove) }
-      const useGreedy = Math.random() < preset.greedyProb
-      const chosen = useGreedy
-        ? candidates.reduce((best, c) => scorePlacement(c, filled, rows) > scorePlacement(best, filled, rows) ? c : best)
-        : pick(candidates)
+      const ordered = orderCandidatesLikeAHuman(candidates)
+      const chosen = pickByTier(config.difficulty, ordered, filled, rows)
       return { kind: 'place', cells: chosen, message: pick(PHRASES.moved) }
     },
 

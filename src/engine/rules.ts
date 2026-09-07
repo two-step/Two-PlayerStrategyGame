@@ -305,5 +305,12 @@ export function scorePlacement(cells: Cells, filled: Set<string>, rows: number):
     }
   }
 
-  return rowGain - avgDepth * 2 - heightVariance * 3 + touching * 5
+  // Extra nudge away from piling straight up at the entrance column (0,0/A0). avgDepth
+  // and heightVariance already discourage tall, uneven stacks in general, but the
+  // entrance specifically deserves to stay clear longer than "just don't fully seal
+  // it" (hasDeliveryRoute) -- a competent human builds outward from the far end of the
+  // floor row first, not straight up at the door.
+  const entranceHeight = afterHeights[0]
+
+  return rowGain - avgDepth * 2 - heightVariance * 3 + touching * 5 - entranceHeight * 1.5
 }

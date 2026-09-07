@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, type CSSProperties } from 'react'
+import { useState, useEffect, useMemo, useRef, type CSSProperties } from 'react'
 import { parseNotation, formatNotation, computePlacementFromDots, computePlacementFromAnchor, checkPlacement, closedRows, cellKey, canPlaceAnywhere } from './engine/rules'
 import { createOpponentEngine, type Difficulty } from './engine/opponentEngine'
 
@@ -1855,10 +1855,18 @@ function DevTestPage() {
   const [response, setResponse] = useState('Flip the coin to decide who requests first.')
   const [pendingFairPlay, setPendingFairPlay] = useState<{ key: string } | null>(null)
   const [gameOver, setGameOver] = useState<string | null>(null)
-  const [log, setLog] = useState<{ t: number; text: string }[]>([])
+  const [log, setLog] = useState<{ id: number; t: number; text: string }[]>([])
   const [showInternals, setShowInternals] = useState(false)
+  const logIdRef = useRef(0)
 
-  const pushLog = (text: string) => setLog(l => [{ t: Date.now(), text }, ...l].slice(0, 40))
+  // Each entry needs a stable, collision-free key: two pushLog calls in the same
+  // synchronous handler (e.g. "You request X" immediately followed by "Opponent
+  // places X") can land in the same millisecond, so entry.t alone was not a safe
+  // React key — colliding keys made the list mis-reconcile and duplicate old rows
+  // on screen every time a new one was pushed, which is why LOG grew far faster
+  // than the real number of events and blew past its own bottom alignment with
+  // the containers above it.
+  const pushLog = (text: string) => setLog(l => [{ id: ++logIdRef.current, t: Date.now(), text }, ...l].slice(0, 40))
   // Small color-coding for the log so it reads at a glance instead of a flat gray wall of text.
   function logColor(text: string): string {
     if (/wins?\b/i.test(text)) return /you win/i.test(text) ? C.green : C.red
@@ -2043,7 +2051,7 @@ function DevTestPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 py-5 grid lg:grid-cols-[1fr_340px] gap-5">
-        <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-5 h-full">
           {gameOver && (
             <div style={{ border: `1px solid ${C.green}60`, background: `${C.green}18`, color: C.deck }} className="p-4 flex items-center justify-between gap-3">
               <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 13 }}>{gameOver}</span>
@@ -2055,7 +2063,7 @@ function DevTestPage() {
               opponent draws from OPPONENT FIGURES to fill YOUR container, you draw from MY
               FIGURES to fill the OPPONENT's — so "where to pick from" reads left-to-right
               instead of needing a mental map back up the page. */}
-          <div className="flex flex-col lg:flex-row gap-5 items-start">
+          <div className="flex flex-col lg:flex-row gap-5 items-stretch">
             <div style={{ border: `1px solid ${C.cyan}30`, background: C.graphite2 }} className="p-4 flex-1 min-w-0">
               <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
                 <span style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>YOUR CONTAINER — {DEV_ROWS} rows, {closedYou.size} closed</span>
@@ -2088,8 +2096,8 @@ function DevTestPage() {
               })} />
           </div>
 
-          <div className="flex flex-col lg:flex-row gap-5 items-start">
-            <div style={{ border: `1px solid ${C.steelDim}25`, background: C.graphite2 }} className="p-4 flex-1 min-w-0">
+          <div className="flex flex-col lg:flex-row gap-5 items-stretch flex-1">
+            <div style={{ border: `1px solid ${C.steelDim}25`, background: C.graphite2 }} className="p-4 flex-1 min-w-0 flex flex-col">
               <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
                 <span style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>OPPONENT CONTAINER — {closedOpp.size} closed · {difficulty}</span>
               </div>
@@ -2108,7 +2116,7 @@ function DevTestPage() {
           </div>
         </div>
 
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-4 h-full">
           <div style={{ border: `1px solid ${C.blue}40`, background: C.graphite2 }} className="p-5">
             <p style={{ color: C.blue, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>OPPONENT DIFFICULTY</p>
             <select value={difficulty} onChange={e => setDifficulty(e.target.value as Difficulty)}
@@ -2161,7 +2169,7 @@ function DevTestPage() {
               style={{ width: '100%', background: C.graphite, border: `1px solid ${responseIsError ? C.red : C.steelDim}40`, color: responseIsError ? C.red : C.steel, fontFamily: "'JetBrains Mono',monospace", fontSize: 12, padding: '8px 10px' }} />
           </div>
 
-          <div style={{ border: `1px solid ${C.steelDim}25`, background: C.graphite2 }} className="p-5">
+          <div style={{ border: `1px solid ${C.steelDim}25`, background: C.graphite2 }} className="p-5 flex-1 flex flex-col">
             <div className="flex items-center justify-between mb-2">
               <p style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>LOG</p>
               <button onClick={() => setShowInternals(s => !s)} style={{ color: C.steelDim, fontSize: 10, fontFamily: "'JetBrains Mono',monospace", textDecoration: 'underline' }}>
@@ -2169,7 +2177,7 @@ function DevTestPage() {
               </button>
             </div>
             {log.map(entry => (
-              <div key={entry.t} style={{ display: 'flex', gap: 8, alignItems: 'baseline', marginBottom: 6 }}>
+              <div key={entry.id} style={{ display: 'flex', gap: 8, alignItems: 'baseline', marginBottom: 6 }}>
                 <span style={{ width: 3, alignSelf: 'stretch', background: logColor(entry.text), flexShrink: 0 }} />
                 <span style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 9, flexShrink: 0 }}>
                   {new Date(entry.t).toLocaleTimeString([], { hour12: false })}
