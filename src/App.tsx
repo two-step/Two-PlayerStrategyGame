@@ -1900,10 +1900,11 @@ function DevTestPage() {
   // Keep the notation field in sync with whatever's been clicked on YOUR CONTAINER so far.
   useEffect(() => {
     if (!incomingFig || clickPoints.length < pointsNeeded) return
-    // Notation convention: points read left to right (ascending column) — [id][left][right] —
-    // independent of which one was physically clicked first.
-    const ordered = [...clickPoints.slice(0, pointsNeeded)].sort((a, b) => a.c - b.c || a.r - b.r)
-    setNotation(formatNotation(incomingFig.id, ordered, DEV_ROWS))
+    // Click order IS notation order: dot1 is whichever point was clicked first, dot2 the
+    // second — exactly like typing "10A12C14" by hand means "dot1 at A12, dot2 at C14", not
+    // "whichever of these two is physically left". Click-to-fill is a shortcut for typing the
+    // field, so it must reproduce the same order, not re-sort by column.
+    setNotation(formatNotation(incomingFig.id, clickPoints.slice(0, pointsNeeded), DEV_ROWS))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clickPoints, incomingFig?.id, pointsNeeded])
 
@@ -2029,7 +2030,7 @@ function DevTestPage() {
     // notation by hand.
     const clickedPoints = clickPoints.slice(0, pointsNeeded)
     const clickGeneratedNotation = clickedPoints.length >= pointsNeeded && pointsNeeded > 0
-      ? formatNotation(incomingFig.id, [...clickedPoints].sort((a, b) => a.c - b.c || a.r - b.r), DEV_ROWS)
+      ? formatNotation(incomingFig.id, clickedPoints, DEV_ROWS)
       : null
     const usingClicks = clickGeneratedNotation != null && notation === clickGeneratedNotation
 
