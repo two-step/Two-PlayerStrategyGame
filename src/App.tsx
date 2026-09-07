@@ -198,6 +198,8 @@ function ContainerGrid({
   rows = 11, showJKSeparator = false,
   highlightCells = new Map<string, string>(),
   onCellClick,
+  onCellHover,
+  onCellLeave,
   pieces = [],
   ghostCells,
   ghostValid = true,
@@ -207,6 +209,11 @@ function ContainerGrid({
   rows?: number; showJKSeparator?: boolean
   highlightCells?: Map<string, string>
   onCellClick?: (r: number, c: number) => void
+  // Live hover tracking so the caller can preview where the SECOND click of a two-point
+  // placement would land (dynamically outlined, red if that orientation is illegal) before
+  // the player commits to the click — "первая точка задаёт относительно чего идёт поворот".
+  onCellHover?: (r: number, c: number) => void
+  onCellLeave?: () => void
   // Placed pieces to number+dot on the board (TO_DO item 8 follow-up): dotIdx are
   // indices into `cells`, same convention as Figure.dots / FigurePreview's `dots`.
   pieces?: { id: number | string; cells: Cells; dotIdx: number[] }[]
@@ -246,7 +253,9 @@ function ContainerGrid({
           const sw = filled ? 1.5 : 0.5
 
           return (
-            <g key={key} onClick={onCellClick ? () => onCellClick(r, c) : undefined}>
+            <g key={key} onClick={onCellClick ? () => onCellClick(r, c) : undefined}
+              onMouseEnter={onCellHover ? () => onCellHover(r, c) : undefined}
+              onMouseLeave={onCellLeave}>
               <rect x={c * cellSize + 0.5} y={r * cellSize + 0.5}
                 width={cellSize - 1} height={cellSize - 1}
                 fill={fill} stroke={stroke} strokeWidth={sw} />
@@ -1842,6 +1851,9 @@ function DevTestPage() {
   const [piecesOpp, setPiecesOpp] = useState<{ id: number; cells: Cells; dotIdx: number[] }[]>([])
   // Click-to-fill notation: 1 point for a single-dot figure, 2 for a two-dot figure.
   const [clickPoints, setClickPoints] = useState<{ r: number; c: number }[]>([])
+  // Cell currently under the cursor over YOUR CONTAINER — used only to live-preview where
+  // the second point of a two-point placement would land before it's actually clicked.
+  const [hoverCell, setHoverCell] = useState<{ r: number; c: number } | null>(null)
 
   const [coinState, setCoinState] = useState<'idle' | 'spinning' | 'done'>('idle')
   const [requester, setRequester] = useState<'you' | 'opp' | null>(null)
@@ -1914,8 +1926,30 @@ function DevTestPage() {
     }
     return { set: new Set(cells.map(([r, c]) => cellKey(r, c))), valid: result.ok, outOfBoundsMessage: undefined }
   }, [incomingFig, clickPoints, pointsNeeded, rotIdx, filledYou])
-  const ghostCells = ghostPlacement?.set
-  const ghostValid = ghostPlacement?.valid ?? true
+
+  // Live hover preview for the SECOND point of a two-point figure: once point1 is fixed,
+  // only up to 4 orientations remain and usually just 1-2 (or none) are legal — rather than
+  // making the player click-and-check by trial and error, outline what THIS hovered cell
+  // would produce, in red when that orientation is illegal or unreachable.
+  const hoverPreview = useMemo(() => {
+    if (!incomingFig || !hoverCell || pointsNeeded !== 2 || clickPoints.length !== 1) return null
+    const [p1] = clickPoints
+    if (p1.r === hoverCell.r && p1.c === hoverCell.c) return null
+    const ordered = [p1, hoverCell].sort((a, b) => a.c - b.c || a.r - b.r)
+    const cells = computePlacementFromDots(incomingFig, ordered)
+    // No orientation reaches this second point at all (e.g. a diagonal offset the figure
+    // can't produce in any rotation) — mark just the hovered cell invalid.
+    if (!cells) return { set: new Set([cellKey(hoverCell.r, hoverCell.c)]), valid: false }
+    const result = checkPlacement(cells, filledYou, DEV_ROWS)
+    if (!result.ok && result.reason === 'Placement goes outside the container') {
+      return { set: new Set([cellKey(hoverCell.r, hoverCell.c)]), valid: false }
+    }
+    return { set: new Set(cells.map(([r, c]) => cellKey(r, c))), valid: result.ok }
+  }, [incomingFig, hoverCell, clickPoints, pointsNeeded, filledYou])
+
+  const displayGhost = ghostPlacement ?? hoverPreview
+  const ghostCells = displayGhost?.set
+  const ghostValid = displayGhost?.valid ?? true
   const ghostOutOfBoundsMessage = ghostPlacement?.outOfBoundsMessage
   // Response text is user-facing plain text, not a tagged object — detect the error/decline
   // cases by their known wording so the Response field can render them in red.
@@ -2081,6 +2115,8 @@ function DevTestPage() {
               </div>
               <div className="overflow-x-auto">
                 <ContainerGrid filledCells={filledYou} closedRows={closedYou} cellSize={24} rows={DEV_ROWS}
+                  onCellHover={incomingFig && !gameOver ? (r, c) => setHoverCell({ r, c }) : undefined}
+                  onCellLeave={() => setHoverCell(null)}
                   pieces={piecesYou}
                   onCellClick={incomingFig && !gameOver ? handleYourContainerClick : undefined}
                   ghostCells={ghostCells} ghostValid={ghostValid} markCells={clickPoints} />
