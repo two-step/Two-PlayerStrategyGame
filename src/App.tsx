@@ -1911,10 +1911,10 @@ function DevTestPage() {
   // "слабо видимые контуры фигуры" — purely visual, Submit still does the real check.
   const ghostPlacement = useMemo(() => {
     if (!incomingFig || clickPoints.length < pointsNeeded) return null
-    const ordered = [...clickPoints.slice(0, pointsNeeded)].sort((a, b) => a.c - b.c || a.r - b.r)
+    const clicked = clickPoints.slice(0, pointsNeeded)
     const cells = pointsNeeded === 2
-      ? computePlacementFromDots(incomingFig, ordered)
-      : computePlacementFromAnchor(incomingFig, rotIdx, ordered[0])
+      ? computePlacementFromDots(incomingFig, clicked)
+      : computePlacementFromAnchor(incomingFig, rotIdx, clicked[0])
     if (!cells) return null
     // Same check submitPlacement will run — lets the ghost outline itself turn red
     // when the current click-selection would actually be rejected.
@@ -1940,8 +1940,8 @@ function DevTestPage() {
     if (!incomingFig || !hoverCell || pointsNeeded !== 2 || clickPoints.length !== 1) return null
     const [p1] = clickPoints
     if (p1.r === hoverCell.r && p1.c === hoverCell.c) return null
-    const ordered = [p1, hoverCell].sort((a, b) => a.c - b.c || a.r - b.r)
-    const cells = computePlacementFromDots(incomingFig, ordered)
+    // Click order, not column order: p1 was clicked first, so it's dots[0]'s target.
+    const cells = computePlacementFromDots(incomingFig, [p1, hoverCell])
     if (!cells) return null
     const result = checkPlacement(cells, filledYou, DEV_ROWS)
     if (!result.ok && result.reason === 'Placement goes outside the container') return null
@@ -2018,15 +2018,37 @@ function DevTestPage() {
 
   function submitPlacement() {
     if (!incomingFig || gameOver) return
-    const parsed = parseNotation(notation, DEV_ROWS)
-    if ('error' in parsed) { setResponse(`Invalid: ${parsed.error}`); return }
-    if (parsed.figureId !== incomingFig.id) {
-      setResponse(`Invalid: notation is for figure ${String(parsed.figureId).padStart(2, '0')}, but ${incomingFig.label} was requested`)
-      return
+    // Prefer the actual click order over re-parsing the notation text: the string only
+    // records the LEFT/RIGHT position of each point (the official [id][left][right] format),
+    // which loses which point was clicked first — and click order is exactly what tells the
+    // engine which of up to two candidate rotations sharing that same left/right span was
+    // intended (the figure's two reference dots are fixed to specific cells and rotate WITH
+    // the shape, they don't get reassigned to "whichever is on the left now"). Only fall back
+    // to parsing the typed text when the field wasn't produced by clicking — i.e. it no longer
+    // matches what the current clicks would generate, meaning the player edited or pasted a
+    // notation by hand.
+    const clickedPoints = clickPoints.slice(0, pointsNeeded)
+    const clickGeneratedNotation = clickedPoints.length >= pointsNeeded && pointsNeeded > 0
+      ? formatNotation(incomingFig.id, [...clickedPoints].sort((a, b) => a.c - b.c || a.r - b.r), DEV_ROWS)
+      : null
+    const usingClicks = clickGeneratedNotation != null && notation === clickGeneratedNotation
+
+    let cells: ReturnType<typeof computePlacementFromDots>
+    if (usingClicks) {
+      cells = pointsNeeded === 2
+        ? computePlacementFromDots(incomingFig, clickedPoints)
+        : computePlacementFromAnchor(incomingFig, rotIdx, clickedPoints[0])
+    } else {
+      const parsed = parseNotation(notation, DEV_ROWS)
+      if ('error' in parsed) { setResponse(`Invalid: ${parsed.error}`); return }
+      if (parsed.figureId !== incomingFig.id) {
+        setResponse(`Invalid: notation is for figure ${String(parsed.figureId).padStart(2, '0')}, but ${incomingFig.label} was requested`)
+        return
+      }
+      cells = parsed.points.length >= 2
+        ? computePlacementFromDots(incomingFig, parsed.points)
+        : computePlacementFromAnchor(incomingFig, rotIdx, parsed.points[0])
     }
-    const cells = parsed.points.length >= 2
-      ? computePlacementFromDots(incomingFig, parsed.points)
-      : computePlacementFromAnchor(incomingFig, rotIdx, parsed.points[0])
     // Fair-play approval is single-use and tied to this exact set of cells — resubmitting
     // a *different* placement (even right after an approval) must be checked from scratch.
     const cellsKey = cells ? [...cells].map(([r, c]) => cellKey(r, c)).sort().join('|') : null
@@ -2104,7 +2126,7 @@ function DevTestPage() {
                 <span style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>YOUR CONTAINER — {DEV_ROWS} rows, {closedYou.size} closed</span>
                 {incomingFig && !gameOver && (
                   <span style={{ color: C.steelDim, fontSize: 11 }}>
-                    Click {pointsNeeded === 2 ? 'the two reference points, in any order — the leftmost becomes dot 1 automatically' : 'a point'} below to fill the request field ({clickPoints.length}/{pointsNeeded})
+                    Click {pointsNeeded === 2 ? "point 1, then point 2 — point 1 is the figure's own fixed dot and sets the rotation" : 'a point'} below to fill the request field ({clickPoints.length}/{pointsNeeded})
                     {clickPoints.length > 0 && (
                       <button onClick={() => setClickPoints([])} style={{ color: C.red, marginLeft: 8, textDecoration: 'underline' }}>clear</button>
                     )}
