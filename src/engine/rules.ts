@@ -108,9 +108,19 @@ export function computePlacementFromDots(figure: FigureDef, targets: { r: number
     [targets[0], targets[1]],
     [targets[1], targets[0]],
   ]
-  for (const ori of orientations) {
-    const local0 = ori[d0], local1 = ori[d1]
-    for (const [t0, t1] of pairs) {
+  // Try every orientation against the notation's own point order (point1 -> dots[0],
+  // point2 -> dots[1]) before EVER falling back to the reversed order. The previous
+  // version looped orientation-by-orientation with both pairings checked inside that
+  // same iteration, so a 180 deg (or 270 vs 90 deg) placement could be silently matched
+  // by an EARLIER, unrelated orientation via its reversed pairing instead: rotating
+  // 180 deg exactly negates the dot-to-dot offset, so "orientation N forward" and
+  // "orientation N+2 reversed" are indistinguishable from the offset alone, and the old
+  // loop just returned whichever one it reached first -- an orientation-enumeration
+  // artifact, not the shape the user actually clicked out. Concretely: two-dot figures
+  // rotated 180 deg (e.g. F15) were silently placed back at their 0 deg orientation.
+  for (const [t0, t1] of pairs) {
+    for (const ori of orientations) {
+      const local0 = ori[d0], local1 = ori[d1]
       const dr = t1.r - t0.r, dc = t1.c - t0.c
       const ldr = local1[0] - local0[0], ldc = local1[1] - local0[1]
       if (dr === ldr && dc === ldc) {

@@ -2136,7 +2136,7 @@ function DevTestPage() {
             </button>
           </div>
 
-          <div style={{ border: `1px solid ${C.cyan}40`, background: C.graphite2 }} className="p-5">
+          <div style={{ border: `1px solid ${C.cyan}40`, background: C.graphite2 }} className="p-5 flex-1 flex flex-col">
             <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 12 }}>INCOMING CARGO</p>
             {incomingFig ? (
               <>
@@ -2169,13 +2169,23 @@ function DevTestPage() {
               style={{ width: '100%', background: C.graphite, border: `1px solid ${responseIsError ? C.red : C.steelDim}40`, color: responseIsError ? C.red : C.steel, fontFamily: "'JetBrains Mono',monospace", fontSize: 12, padding: '8px 10px' }} />
           </div>
 
-          <div style={{ border: `1px solid ${C.steelDim}25`, background: C.graphite2 }} className="p-5 flex-1 flex flex-col">
-            <div className="flex items-center justify-between mb-2">
-              <p style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>LOG</p>
-              <button onClick={() => setShowInternals(s => !s)} style={{ color: C.steelDim, fontSize: 10, fontFamily: "'JetBrains Mono',monospace", textDecoration: 'underline' }}>
-                {showInternals ? 'hide' : 'show'} engine internals
-              </button>
-            </div>
+        </div>
+      </div>
+
+      {/* LOG lives below the two-column grid, not inside the right-hand column: it's the
+          one box that keeps growing as the game goes on, so it can no longer be the thing
+          the OPPONENT CONTAINER row stretches to match (that was INCOMING CARGO, the last
+          stable-sized box up there) — it gets a capped height with its own scroll instead,
+          so neither it nor the layout above it grows no matter how long the log gets. */}
+      <div className="max-w-7xl mx-auto px-4 pb-5">
+        <div style={{ border: `1px solid ${C.steelDim}25`, background: C.graphite2 }} className="p-5">
+          <div className="flex items-center justify-between mb-2">
+            <p style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>LOG</p>
+            <button onClick={() => setShowInternals(s => !s)} style={{ color: C.steelDim, fontSize: 10, fontFamily: "'JetBrains Mono',monospace", textDecoration: 'underline' }}>
+              {showInternals ? 'hide' : 'show'} engine internals
+            </button>
+          </div>
+          <div className="max-h-64 overflow-y-auto pr-1">
             {log.map(entry => (
               <div key={entry.id} style={{ display: 'flex', gap: 8, alignItems: 'baseline', marginBottom: 6 }}>
                 <span style={{ width: 3, alignSelf: 'stretch', background: logColor(entry.text), flexShrink: 0 }} />
@@ -2185,12 +2195,12 @@ function DevTestPage() {
                 <span style={{ color: C.steel, fontSize: 11 }}>{entry.text}</span>
               </div>
             ))}
-            {showInternals && (
-              <pre style={{ color: C.steelDim, fontSize: 10, marginTop: 8, whiteSpace: 'pre-wrap', borderTop: `1px solid ${C.steelDim}25`, paddingTop: 8 }}>
-{JSON.stringify({ difficulty: engine.difficulty, targetWinRate: engine.targetWinRate, usedIds: [...usedIds], lastRequestToYou, lastRequestToOpp, requester }, null, 2)}
-              </pre>
-            )}
           </div>
+          {showInternals && (
+            <pre style={{ color: C.steelDim, fontSize: 10, marginTop: 8, whiteSpace: 'pre-wrap', borderTop: `1px solid ${C.steelDim}25`, paddingTop: 8 }}>
+{JSON.stringify({ difficulty: engine.difficulty, targetWinRate: engine.targetWinRate, usedIds: [...usedIds], lastRequestToYou, lastRequestToOpp, requester }, null, 2)}
+            </pre>
+          )}
         </div>
       </div>
     </div>
