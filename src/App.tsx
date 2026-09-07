@@ -275,7 +275,7 @@ function ContainerGrid({
         const [lr, lc] = p.cells[labelIdx]
         const fontSize = Math.max(8, Math.min(cellSize * 0.5, 12))
         return (
-          <g key={`piece-${p.id}-${pi}`}>
+          <g key={`piece-${p.id}-${pi}`} pointerEvents="none">
             {p.cells.map(([r, c], i) => dotSet.has(i) ? (
               <circle key={`pd-${i}`} cx={c * cellSize + cellSize / 2} cy={r * cellSize + cellSize / 2}
                 r={Math.max(1.5, cellSize * 0.11)} fill={C.deck} />
@@ -295,12 +295,13 @@ function ContainerGrid({
         return (
           <rect key={`ghost-${key}`} x={c * cellSize + 1.5} y={r * cellSize + 1.5}
             width={cellSize - 3} height={cellSize - 3}
-            fill="none" stroke={ghostColor} strokeWidth={1.25} strokeDasharray="3 2" opacity={0.6} />
+            fill="none" stroke={ghostColor} strokeWidth={1.25} strokeDasharray="3 2" opacity={0.6}
+            pointerEvents="none" />
         )
       })}
       {markCells?.map((p, i) => (
         <circle key={`mark-${i}`} cx={p.c * cellSize + cellSize / 2} cy={p.r * cellSize + cellSize / 2}
-          r={Math.max(2, cellSize * 0.16)} fill={C.cyan} opacity={0.85} />
+          r={Math.max(2, cellSize * 0.16)} fill={C.cyan} opacity={0.85} pointerEvents="none" />
       ))}
       {showJKSeparator && rows === 11 && (
         <line x1={0} y1={cellSize} x2={COLS * cellSize} y2={cellSize}
@@ -1930,20 +1931,20 @@ function DevTestPage() {
   // Live hover preview for the SECOND point of a two-point figure: once point1 is fixed,
   // only up to 4 orientations remain and usually just 1-2 (or none) are legal — rather than
   // making the player click-and-check by trial and error, outline what THIS hovered cell
-  // would produce, in red when that orientation is illegal or unreachable.
+  // would produce, red when the orientation is geometrically reachable but the game rules
+  // reject it (collision, overhang). When NO orientation reaches the hovered cell at all,
+  // stay silent instead of flashing a red marker — that's the expected outcome for most
+  // candidate cells (only 1-2 of 4 orientations are ever reachable from a fixed point1), and
+  // painting something there every time was itself the source of the reported flakiness.
   const hoverPreview = useMemo(() => {
     if (!incomingFig || !hoverCell || pointsNeeded !== 2 || clickPoints.length !== 1) return null
     const [p1] = clickPoints
     if (p1.r === hoverCell.r && p1.c === hoverCell.c) return null
     const ordered = [p1, hoverCell].sort((a, b) => a.c - b.c || a.r - b.r)
     const cells = computePlacementFromDots(incomingFig, ordered)
-    // No orientation reaches this second point at all (e.g. a diagonal offset the figure
-    // can't produce in any rotation) — mark just the hovered cell invalid.
-    if (!cells) return { set: new Set([cellKey(hoverCell.r, hoverCell.c)]), valid: false }
+    if (!cells) return null
     const result = checkPlacement(cells, filledYou, DEV_ROWS)
-    if (!result.ok && result.reason === 'Placement goes outside the container') {
-      return { set: new Set([cellKey(hoverCell.r, hoverCell.c)]), valid: false }
-    }
+    if (!result.ok && result.reason === 'Placement goes outside the container') return null
     return { set: new Set(cells.map(([r, c]) => cellKey(r, c))), valid: result.ok }
   }, [incomingFig, hoverCell, clickPoints, pointsNeeded, filledYou])
 
