@@ -2868,6 +2868,16 @@ const PP_CYAN: [number, number, number] = [31, 167, 163]
 const PP_GRAPHITE: [number, number, number] = [28, 31, 38]
 const PP_STEEL: [number, number, number] = [120, 128, 143]
 
+const CONTAINER_FIGURE_NOTE = 'Note: after drawing a placed figure in the container, write its figure number inside the shape.'
+
+function drawContainerNote(doc: jsPDF, x: number, y: number, maxWidth: number) {
+  doc.setFont('helvetica', 'italic')
+  doc.setFontSize(8.5)
+  doc.setTextColor(...PP_STEEL)
+  const lines = doc.splitTextToSize(CONTAINER_FIGURE_NOTE, maxWidth)
+  doc.text(lines, x, y)
+}
+
 function drawContainerGridPdf(doc: jsPDF, x0: number, y0: number, cellPt: number, rows: number, showJKSeparator: boolean) {
   const COLS = 15
   const gridW = COLS * cellPt
@@ -2927,7 +2937,8 @@ function exportContainerTemplatePdf(rows: 10 | 11, showJKSeparator: boolean, nam
   drawContainerGridPdf(doc, margin, 108, cellPt, rows, showJKSeparator)
 
   const footerY = 108 + rows * cellPt + 30
-  doc.setFontSize(9); doc.setTextColor(...PP_STEEL)
+  drawContainerNote(doc, margin, footerY - 14, pageW - 2 * margin)
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...PP_STEEL)
   doc.text('PuzzleStow — Print & Play · puzzlestow.com', margin, footerY)
 
   doc.save(`PuzzleStow_Container_15x${rows}_${showJKSeparator ? 'Beginner' : 'Standard'}.pdf`)
@@ -3015,34 +3026,37 @@ function exportCompletePackPdf() {
   y += 20
   const rulesSummary: [string, string][] = [
     ['Support', 'No piece may float — every cell rests on row A or on an already-placed piece.'],
-    ['Steps (≤ 3)', 'Height difference between adjacent columns must not exceed 3 cells.'],
+    ['Steps (max 3)', 'Height difference between adjacent columns must not exceed 3 cells.'],
     ['Overhang', 'More than 50% of a piece unsupported is disallowed by default (bilateral fair-play exception aside).'],
     ['Return Path', 'After placing a piece, a passable path back to exit A0 must remain open.'],
     ['Row/Column Closure', 'Win by closing 5 rows/columns combined, or by your opponent having no legal placement.'],
   ]
   doc.setFontSize(9.5)
+  const rulesLabelW = 128
   rulesSummary.forEach(([title, text]) => {
     doc.setFont('helvetica', 'bold'); doc.setTextColor(...PP_BLUE)
     doc.text(title + ':', margin, y)
     doc.setFont('helvetica', 'normal'); doc.setTextColor(...PP_GRAPHITE)
-    const lines = doc.splitTextToSize(text, pageW - 2 * margin - 90)
-    doc.text(lines, margin + 90, y)
+    const lines = doc.splitTextToSize(text, pageW - 2 * margin - rulesLabelW)
+    doc.text(lines, margin + rulesLabelW, y)
     y += 13 * Math.max(1, lines.length) + 5
   })
   y += 8
   doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...PP_GRAPHITE)
-  const notationLine = doc.splitTextToSize('Move notation: [figureId][col1][row1][col2][row2] — e.g. F10 at cols 1/2, rows A/C → 10A1C2', pageW - 2 * margin)
+  const notationLine = doc.splitTextToSize('Move notation: [2-digit figure number][row1][col1][row2][col2] — e.g. figure F10 to points A1 and C2 -> 10A1C2', pageW - 2 * margin)
   doc.text(notationLine, margin, y)
 
   doc.addPage()
   doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(...PP_GRAPHITE)
   doc.text('Container Template — 15×10 Standard', margin, 50)
   drawContainerGridPdf(doc, margin, 78, Math.min((pageW - 2 * margin) / 15, 28), 10, false)
+  drawContainerNote(doc, margin, 78 + 10 * Math.min((pageW - 2 * margin) / 15, 28) + 30, pageW - 2 * margin)
 
   doc.addPage()
   doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(...PP_GRAPHITE)
   doc.text('Container Template — 15×11 Beginner', margin, 50)
   drawContainerGridPdf(doc, margin, 78, Math.min((pageW - 2 * margin) / 15, 28), 11, true)
+  drawContainerNote(doc, margin, 78 + 11 * Math.min((pageW - 2 * margin) / 15, 28) + 30, pageW - 2 * margin)
 
   doc.addPage()
   drawFigureReferenceSheet(doc, 50)
