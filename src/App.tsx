@@ -1,6 +1,21 @@
 import { useState, useEffect, useMemo, useRef, type CSSProperties } from 'react'
-import { parseNotation, formatNotation, computePlacementFromDots, computePlacementFromAnchor, checkPlacement, closedRows, cellKey, canPlaceAnywhere } from './engine/rules'
+import { parseNotation, formatNotation, computePlacementFromDots, computePlacementFromAnchor, checkPlacement, closedRows, closedCols, computeDeadCells, cellKey, canPlaceAnywhere, rowToLetter } from './engine/rules'
 import { createOpponentEngine, type Difficulty } from './engine/opponentEngine'
+import { jsPDF } from 'jspdf'
+import autoTable from 'jspdf-autotable'
+import type { Session } from '@supabase/supabase-js'
+import { supabase, type PuzzleStowProfile, resizeAvatarFile, blobToByteaHex, byteaHexToObjectUrl } from './lib/supabaseClient'
+
+// Supabase's auth emails (confirm signup / password recovery / email change) redirect
+// back to this app with a `type` param in the URL hash (implicit flow) or query string
+// (PKCE flow) -- read once, synchronously, on first render, before supabase-js's own
+// detectSessionInUrl handling processes and strips it.
+function getAuthRedirectType(): string | null {
+  if (typeof window === 'undefined') return null
+  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+  const searchParams = new URLSearchParams(window.location.search)
+  return hashParams.get('type') || searchParams.get('type')
+}
 
 // ── Brand colors ──────────────────────────────────────────────────────────────
 const C = {
@@ -24,6 +39,19 @@ interface Figure {
   id: number; name: string; label: string; cells: Cells; size: number; dots: number[]
 }
 
+// Structured placement record for the /devtest page's log + PDF export (Sergey, 2026-09-08).
+interface LogMoveRecord {
+  player: 'You' | 'Opponent'
+  date: string
+  time: string
+  spentLabel: string
+  figureLabel: string
+  notation: string
+  closed: string[]
+  youScore: number
+  oppScore: number
+}
+
 // ── 27 Figures (source: otgruzka_figures.json, confirmed) ────────────────────
 const FIGURES: Figure[] = [
   { id:  1, name: 'Mono', label: 'F01', size: 1, cells: [[0,0]], dots: [0] },
@@ -34,25 +62,25 @@ const FIGURES: Figure[] = [
   { id:  6, name: 'Tromino-L', label: 'F06', size: 3, cells: [[0,0],[1,0],[1,1]], dots: [0, 2] },
   { id:  7, name: 'Tetromino-O', label: 'F07', size: 4, cells: [[0,0],[0,1],[1,0],[1,1]], dots: [0, 3] },
   { id:  8, name: 'Tetromino-L', label: 'F08', size: 4, cells: [[0,0],[1,0],[2,0],[2,1]], dots: [0, 3] },
-  { id:  9, name: 'Tetromino-J', label: 'F09', size: 4, cells: [[0,1],[1,1],[2,0],[2,1]], dots: [0, 2] },
-  { id: 10, name: 'Pentomino-F', label: 'F10', size: 5, cells: [[0,1],[0,2],[1,1],[2,0],[2,1]], dots: [1, 3] },
+  { id:  9, name: 'Tetromino-J', label: 'F09', size: 4, cells: [[0,1],[1,1],[2,0],[2,1]], dots: [2, 0] },
+  { id: 10, name: 'Pentomino-F', label: 'F10', size: 5, cells: [[0,1],[0,2],[1,1],[2,0],[2,1]], dots: [3, 1] },
   { id: 11, name: 'Pentomino-W', label: 'F11', size: 5, cells: [[0,0],[0,1],[1,1],[2,1],[2,2]], dots: [0, 4] },
-  { id: 12, name: 'Tetromino-S', label: 'F12', size: 4, cells: [[0,1],[0,2],[1,0],[1,1]], dots: [1, 2] },
+  { id: 12, name: 'Tetromino-S', label: 'F12', size: 4, cells: [[0,1],[0,2],[1,0],[1,1]], dots: [2, 1] },
   { id: 13, name: 'Tetromino-Z', label: 'F13', size: 4, cells: [[0,0],[0,1],[1,1],[1,2]], dots: [0, 3] },
   { id: 14, name: 'Tetromino-T', label: 'F14', size: 4, cells: [[0,1],[1,0],[1,1],[1,2]], dots: [0, 3] },
   { id: 15, name: 'Pentomino-U', label: 'F15', size: 5, cells: [[0,0],[0,1],[0,2],[1,0],[1,2]], dots: [0, 4] },
   { id: 16, name: 'Pentomino-X', label: 'F16', size: 5, cells: [[0,1],[1,0],[1,1],[1,2],[2,1]], dots: [2] },
-  { id: 17, name: 'Pentomino-V', label: 'F17', size: 5, cells: [[0,0],[0,1],[0,2],[1,0],[2,0]], dots: [2, 4] },
+  { id: 17, name: 'Pentomino-V', label: 'F17', size: 5, cells: [[0,0],[0,1],[0,2],[1,0],[2,0]], dots: [4, 2] },
   { id: 18, name: 'Hexomino-C', label: 'F18', size: 6, cells: [[0,0],[1,0],[1,1],[1,2],[2,0],[2,2]], dots: [0, 5] },
-  { id: 19, name: 'Hexomino-B', label: 'F19', size: 6, cells: [[0,2],[1,0],[1,1],[1,2],[2,0],[2,2]], dots: [0, 4] },
-  { id: 20, name: 'Pentomino-N', label: 'F20', size: 5, cells: [[0,1],[0,2],[1,0],[1,1],[2,0]], dots: [1, 4] },
+  { id: 19, name: 'Hexomino-B', label: 'F19', size: 6, cells: [[0,2],[1,0],[1,1],[1,2],[2,0],[2,2]], dots: [4, 0] },
+  { id: 20, name: 'Pentomino-N', label: 'F20', size: 5, cells: [[0,1],[0,2],[1,0],[1,1],[2,0]], dots: [4, 1] },
   { id: 21, name: 'Pentomino-R', label: 'F21', size: 5, cells: [[0,1],[1,0],[1,1],[1,2],[2,2]], dots: [0, 4] },
-  { id: 22, name: 'Pentomino-Y', label: 'F22', size: 5, cells: [[0,1],[1,0],[1,1],[1,2],[2,0]], dots: [0, 4] },
+  { id: 22, name: 'Pentomino-Y', label: 'F22', size: 5, cells: [[0,1],[1,0],[1,1],[1,2],[2,0]], dots: [4, 0] },
   { id: 23, name: 'Hexomino-H', label: 'F23', size: 6, cells: [[0,1],[1,0],[1,1],[1,2],[2,0],[2,2]], dots: [0, 5] },
   { id: 24, name: 'Pentomino-T', label: 'F24', size: 5, cells: [[0,1],[1,1],[2,0],[2,1],[2,2]], dots: [0, 4] },
   { id: 25, name: 'Heptomino-H', label: 'F25', size: 7, cells: [[0,0],[0,2],[1,0],[1,1],[1,2],[2,0],[2,2]], dots: [0, 6] },
   { id: 26, name: 'Hexomino-P', label: 'F26', size: 6, cells: [[0,0],[0,1],[0,2],[0,3],[1,1],[1,3]], dots: [0, 5] },
-  { id: 27, name: 'Hexomino-Q', label: 'F27', size: 6, cells: [[0,0],[0,1],[0,2],[0,3],[1,0],[1,2]], dots: [3, 4] },
+  { id: 27, name: 'Hexomino-Q', label: 'F27', size: 6, cells: [[0,0],[0,1],[0,2],[0,3],[1,0],[1,2]], dots: [4, 3] },
 ]
 
 // ── Tiers (PairSec_Спецификация_Final_2026.docx §7.1.6) ───────────────────────
@@ -194,7 +222,7 @@ function FigurePreview({ cells, cardSize = 72, color = C.cyan, cellPx = CELL_PX,
 const ROW_LABELS = 'ABCDEFGHIJK'
 
 function ContainerGrid({
-  filledCells, closedRows = new Set(), cellSize = 22,
+  filledCells, closedRows = new Set(), closedCols = new Set(), deadCells = new Set<string>(), cellSize = 22,
   rows = 11, showJKSeparator = false,
   highlightCells = new Map<string, string>(),
   onCellClick,
@@ -205,7 +233,7 @@ function ContainerGrid({
   ghostValid = true,
   markCells,
 }: {
-  filledCells: Set<string>; closedRows?: Set<number>; cellSize?: number
+  filledCells: Set<string>; closedRows?: Set<number>; closedCols?: Set<number>; deadCells?: Set<string>; cellSize?: number
   rows?: number; showJKSeparator?: boolean
   highlightCells?: Map<string, string>
   onCellClick?: (r: number, c: number) => void
@@ -230,6 +258,20 @@ function ContainerGrid({
   const W = COLS * cellSize + RL, H = rows * cellSize + BH
   const labelFor = (r: number) => ROW_LABELS[rows - 1 - r]
 
+  // Reference dots used to sit on every placed piece permanently — Sergey, 2026-09-08:
+  // "точки из контейнера убираем, как лишний, ломающий картинку элемент" (remove them,
+  // they clutter the board once a few pieces are down). They're still needed to read a
+  // piece's orientation, so instead of always-on they now surface only on hover: "при
+  // наведении на установленную в контейнере фигуру подсвечивать её расположение с
+  // указанием точек" (hovering a placed figure highlights its footprint and reveals its
+  // dots). The number label is unaffected — only the dots were the complaint.
+  const [hoveredPieceIdx, setHoveredPieceIdx] = useState<number | null>(null)
+  const pieceIdxByCell = useMemo(() => {
+    const m = new Map<string, number>()
+    pieces.forEach((p, pi) => p.cells.forEach(([r, c]) => m.set(`${r},${c}`, pi)))
+    return m
+  }, [pieces])
+
   return (
     <svg width={W} height={H}
       style={{ fontFamily: "'JetBrains Mono', monospace", display: 'block', cursor: onCellClick ? 'crosshair' : 'default' }}>
@@ -237,25 +279,30 @@ function ContainerGrid({
         Array.from({ length: COLS }, (_, c) => {
           const key = `${r},${c}`
           const filled = filledCells.has(key)
-          const closed = closedRows.has(r)
+          const dead = deadCells.has(key)
+          // A row OR column that's fully occupied (real cargo, or a dead/X cell — see
+          // computeDeadCells) closes. TO_DO.docx fix: columns used to never be checked.
+          const closed = closedRows.has(r) || closedCols.has(c)
           const entry = r === rows - 1 && c === 0
           const hColor = highlightCells.get(key)
 
           // Outline-first: thin stroke, near-transparent fill (Part F fix)
-          const fill = closed && filled ? `${C.green}22`
+          const fill = closed && (filled || dead) ? `${C.green}22`
             : filled ? `${C.blue}18`
+            : dead ? `${C.red}14`
             : entry ? `${C.cyan}18`
             : 'transparent'
-          const stroke = closed && filled ? C.green
+          const stroke = closed && (filled || dead) ? C.green
             : filled ? C.blue
+            : dead ? `${C.red}90`
             : entry ? C.cyan
             : `${C.cyan}18`
-          const sw = filled ? 1.5 : 0.5
+          const sw = filled || dead ? 1.5 : 0.5
 
           return (
             <g key={key} onClick={onCellClick ? () => onCellClick(r, c) : undefined}
-              onMouseEnter={onCellHover ? () => onCellHover(r, c) : undefined}
-              onMouseLeave={onCellLeave}>
+              onMouseEnter={() => { onCellHover?.(r, c); setHoveredPieceIdx(pieceIdxByCell.get(key) ?? null) }}
+              onMouseLeave={() => { onCellLeave?.(); setHoveredPieceIdx(null) }}>
               <rect x={c * cellSize + 0.5} y={r * cellSize + 0.5}
                 width={cellSize - 1} height={cellSize - 1}
                 fill={fill} stroke={stroke} strokeWidth={sw} />
@@ -264,19 +311,33 @@ function ContainerGrid({
                   width={cellSize - 2} height={cellSize - 2}
                   fill={hColor} />
               )}
+              {dead && (
+                <text x={c * cellSize + cellSize / 2} y={r * cellSize + cellSize / 2}
+                  textAnchor="middle" dominantBaseline="central" pointerEvents="none"
+                  fontFamily="'JetBrains Mono',monospace" fontWeight={700}
+                  fontSize={Math.max(7, cellSize * 0.5)} fill={closed ? C.green : C.red}>
+                  X
+                </text>
+              )}
             </g>
           )
         })
       )}
       {pieces.map((p, pi) => {
         if (!p.cells.length) return null
+        const hovered = pi === hoveredPieceIdx
         const dotSet = new Set(p.dotIdx)
         const labelIdx = pickLabelCellIdx(p.cells, p.dotIdx)
         const [lr, lc] = p.cells[labelIdx]
         const fontSize = Math.max(8, Math.min(cellSize * 0.5, 12))
         return (
           <g key={`piece-${p.id}-${pi}`} pointerEvents="none">
-            {p.cells.map(([r, c], i) => dotSet.has(i) ? (
+            {hovered && p.cells.map(([r, c], i) => (
+              <rect key={`ph-${i}`} x={c * cellSize + 1} y={r * cellSize + 1}
+                width={cellSize - 2} height={cellSize - 2}
+                fill={`${C.cyan}30`} stroke={C.cyan} strokeWidth={1.5} />
+            ))}
+            {hovered && p.cells.map(([r, c], i) => dotSet.has(i) ? (
               <circle key={`pd-${i}`} cx={c * cellSize + cellSize / 2} cy={r * cellSize + cellSize / 2}
                 r={Math.max(1.5, cellSize * 0.11)} fill={C.deck} />
             ) : null)}
@@ -319,6 +380,22 @@ function ContainerGrid({
           textAnchor="middle" fontSize={8} fill={C.steelDim}>{c}</text>
       ))}
     </svg>
+  )
+}
+
+// ── Score panel — head-to-head "mine:theirs" closed-lines score, shown to the right of
+// the corresponding container (TO_DO.docx, 2026-09-08: "если у одного 1:0 ... то у
+// другого счёт 0:1" — each container's panel reads from its own side, so YOUR CONTAINER
+// shows you:opponent and OPPONENT CONTAINER shows opponent:you, not two independent
+// counters). `breakdown` is this side's own rows-vs-columns split.
+function ScorePanel({ myClosed, oppClosed, breakdown, color = C.green }: { myClosed: number; oppClosed: number; breakdown: string; color?: string }) {
+  return (
+    <div style={{ border: `1px solid ${color}35`, background: `${color}10`, minWidth: 60 }}
+      className="p-2 flex flex-col items-center justify-center gap-1 shrink-0 self-stretch">
+      <span style={{ color, fontFamily: "'JetBrains Mono',monospace", fontSize: 9, letterSpacing: '0.05em' }}>SCORE</span>
+      <span style={{ color, fontFamily: "'JetBrains Mono',monospace", fontSize: 22, fontWeight: 700, lineHeight: 1 }}>{myClosed}:{oppClosed}</span>
+      <span style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 9 }}>{breakdown}</span>
+    </div>
   )
 }
 
@@ -456,6 +533,27 @@ function TelegramIcon({ size = 16 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill={C.blue}>
       <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8l-1.7 8c-.12.54-.48.67-.96.42l-2.65-1.95-1.27 1.23c-.14.14-.26.26-.54.26l.19-2.72 4.96-4.48c.22-.19-.05-.3-.33-.11L8.31 15.19l-2.62-.82c-.57-.18-.58-.57.12-.84l10.23-3.94c.47-.18.89.11.6.85z" />
+    </svg>
+  )
+}
+
+// Part 8 (Sergey, 2026-09-08: "Дорисовать страницу Sign In/Sign Out") -- the logged-in
+// nav state (Profile / Sign out) was left as bare, mismatched text next to fully-drawn
+// controls (EN/RU pill, music icon, TEST pill, Play pill) -- these two give it the same
+// visual weight as the logged-out "Sign In" pill it sits beside.
+function UserIcon({ size = 14, color = 'currentColor' }: { size?: number; color?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke={color} strokeWidth={1.5}>
+      <circle cx={8} cy={5} r={3} /><path d="M2 14c0-3 2.5-5 6-5s6 2 6 5" />
+    </svg>
+  )
+}
+
+function LogoutIcon({ size = 15, color = 'currentColor' }: { size?: number; color?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke={color} strokeWidth={1.5}>
+      <path d="M6 14H3.5A1.5 1.5 0 0 1 2 12.5v-9A1.5 1.5 0 0 1 3.5 2H6" />
+      <path d="M10.5 11.5 14 8l-3.5-3.5" /><path d="M14 8H6" />
     </svg>
   )
 }
@@ -604,10 +702,16 @@ function Nav({ page, setPage, isLoggedIn, onSignOut }: {
           </button>
           {isLoggedIn ? (
             <>
-              <button onClick={() => setPage('profile')} style={{ color: page === 'profile' ? C.cyan : C.steel }}
-                className="text-sm font-medium hover:text-white transition-colors">Profile</button>
-              <button onClick={onSignOut} style={{ color: C.steelDim }}
-                className="text-xs hover:text-deck transition-colors">Sign out</button>
+              <button onClick={() => setPage('profile')}
+                style={{ color: page === 'profile' ? C.cyan : C.steel, border: `1px solid ${page === 'profile' ? C.cyan : C.steelDim}50`, fontSize: 13, padding: '4px 14px', display: 'flex', alignItems: 'center', gap: 6 }}
+                className="hover:text-deck hover:border-steel transition-all">
+                <UserIcon size={13} color={page === 'profile' ? C.cyan : C.steel} />
+                Profile
+              </button>
+              <button onClick={onSignOut} title="Sign out" style={{ color: C.steelDim }}
+                className="hover:text-deck transition-colors">
+                <LogoutIcon size={16} />
+              </button>
             </>
           ) : (
             <button onClick={() => setPage('auth')}
@@ -645,8 +749,14 @@ function Nav({ page, setPage, isLoggedIn, onSignOut }: {
             className="text-sm text-left">● Dev/Test</button>
           {isLoggedIn ? (
             <>
-              <button onClick={() => { setPage('profile'); setOpen(false) }} style={{ color: C.steel }} className="text-sm font-medium text-left">Profile</button>
-              <button onClick={() => { onSignOut(); setOpen(false) }} style={{ color: C.steelDim }} className="text-xs text-left">Sign out</button>
+              <button onClick={() => { setPage('profile'); setOpen(false) }} style={{ color: page === 'profile' ? C.cyan : C.steel, display: 'flex', alignItems: 'center', gap: 8 }} className="text-sm font-medium text-left">
+                <UserIcon size={14} color={page === 'profile' ? C.cyan : C.steel} />
+                Profile
+              </button>
+              <button onClick={() => { onSignOut(); setOpen(false) }} style={{ color: C.steelDim, display: 'flex', alignItems: 'center', gap: 8 }} className="text-sm text-left">
+                <LogoutIcon size={14} />
+                Sign out
+              </button>
             </>
           ) : (
             <button onClick={() => { setPage('auth'); setOpen(false) }} style={{ color: C.steel }} className="text-sm font-medium text-left">Sign In / Sign Up</button>
@@ -664,6 +774,42 @@ function Nav({ page, setPage, isLoggedIn, onSignOut }: {
         </div>
       )}
     </nav>
+  )
+}
+
+// ── Gated preview — wraps a page for a signed-out visitor: the real page renders
+// behind a blur, non-interactive (Sergey, 2026-09-08: "для гостей просто мёртвые
+// страницы... чисто как скриншоты" -- dead, screenshot-style pages for guests), with a
+// sign-in prompt on top. Logged-in visitors never see this -- see the page === 'sandbox'
+// / page === 'practice' render branches in App().
+function GatedPreview({ title, blurb, features, setPage, children }: { title: string; blurb: string; features: string[]; setPage: (p: Page) => void; children: React.ReactNode }) {
+  return (
+    <div style={{ position: 'relative' }}>
+      {/* Lighter than the old blur(3px)/75%-dim -- the real page underneath should still
+          read as "this is what you'll get", not be an opaque mystery (Sergey, 2026-09-08:
+          "кот в мешке" -- a cat in a bag). */}
+      <div style={{ pointerEvents: 'none', userSelect: 'none', filter: 'blur(1.5px) saturate(0.75) brightness(0.9)' }}>
+        {children}
+      </div>
+      <div style={{ position: 'absolute', inset: 0, background: `${C.graphite}80`, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+        <div style={{ background: C.graphite2, border: `1px solid ${C.cyan}40`, padding: '28px 32px', maxWidth: 380, textAlign: 'center', boxShadow: `0 8px 32px ${C.graphite}c0` }}>
+          <p style={{ color: C.deck, fontSize: 18, fontWeight: 600, marginBottom: 8 }}>{title}</p>
+          <p style={{ color: C.steel, fontSize: 13, lineHeight: 1.5, marginBottom: 16 }}>{blurb}</p>
+          <ul style={{ listStyle: 'none', textAlign: 'left', margin: '0 0 20px', padding: 0 }}>
+            {features.map((f, i) => (
+              <li key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', color: C.deck, fontSize: 12.5, lineHeight: 1.5, marginBottom: 6 }}>
+                <span style={{ color: C.cyan, fontWeight: 700, flexShrink: 0 }}>✓</span>
+                <span>{f}</span>
+              </li>
+            ))}
+          </ul>
+          <button onClick={() => setPage('auth')}
+            style={{ background: C.blue, color: C.deck, fontWeight: 600, fontSize: 13, padding: '10px 22px', border: 'none', cursor: 'pointer', width: '100%' }}>
+            Sign In / Sign Up
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -1393,7 +1539,7 @@ function buildSandboxDemo() {
   return s
 }
 
-function SandboxPage() {
+function SandboxPreview() {
   const [cells, setCells] = useState(buildSandboxDemo)
   const [selectedFigId, setSelectedFigId] = useState<number | null>(null)
   const [oriIdx, setOriIdx] = useState(0)
@@ -1516,14 +1662,911 @@ function SandboxPage() {
   )
 }
 
+
+// ── Sandbox Page (logged-in, real) ────────────────────────────────────────────
+// Sergey, 2026-09-08: UC-05 (onboarding tutorial) + UC-07 (free sandbox) combined into
+// one flow -- a short guided tutorial first, then free placement with the same engine
+// DevTestPage uses (rules.ts, client-side only -- Sergey: "клиентский скрипт, не будем
+// сервер грузить"). No opponent, no scoring, no 27-figure pool limit: this is meant for
+// repeatable experimentation, so every figure stays pickable any number of times.
+//
+// Sergey, 2026-09-09: tutorial substantially expanded from 4 steps to 10 (+ completion)
+// per his own 8-point spec -- see claude/PuzzleStow_Sandbox_Tutorial_Improvement_Scenario_v2.md
+// in the project for the full documented scenario and approval trail. Steps 0-2 are the
+// original tutorial, unchanged. Steps 3-9 are new: a static 4-rule overview, F15 placed by
+// clicked points then by typed notation, a 7-figure "shipments" practice round (5 core +
+// 2 bonus, dead-cell tally), a step-climbing exercise, a fair-play walkthrough covering both
+// outcomes, and a strategy-tips screen -- before the rewritten completion screen.
+
+// Sequence for Step 6 (SHIPMENTS): core 5 + a 2-figure bonus pack, chosen by Sergey
+// (2026-09-09) specifically because they're noticeably harder than a beginner set --
+// verified solvable with 0 new dead cells end-to-end via a scratch simulation against
+// the real engine (_to_delete/find_seq.ts) before shipping, not hand-waved.
+const SHIPMENT_FIGS = [8, 17, 9, 11, 27, 13, 23]
+const SHIPMENT_CORE_COUNT = 5
+
+// Step 8 (CLIMBING, AND CAREFULLY DESCENDING, A TALL STEP) starting position, redesigned
+// 2026-09-10 per Sergey's playtest feedback: F4 stood vertically in the MIDDLE of the
+// container (column 7), floor to height 4 -- a step 4x1 on BOTH sides of the wall, not
+// just near the entrance. Verified against the real engine (find_step8_v2.ts): the right
+// side (columns 8-14) starts fully unreachable; raising column 6 to height >=1 (any
+// figure that touches its floor cell) bridges reachability into the open run directly
+// above the wall, from which a Mono placed on top of the wall (0% overhang) or an F05
+// resting 1 cell on the wall-top with 4 hanging over open air (80% overhang, needs the
+// same fair-play "Place again to confirm" flow used elsewhere) both work, 0 new dead
+// cells either way.
+const STEP_CLIMB_WALL_COL = 7
+function stepClimbInitialFilled(rows: number): Set<string> {
+  const s = new Set<string>()
+  for (let r = rows - 4; r <= rows - 1; r++) s.add(cellKey(r, STEP_CLIMB_WALL_COL))
+  return s
+}
+
+function SandboxPage({ setPage: _setPage }: { setPage: (p: Page) => void }) {
+  const ROWS = 11
+  const TOTAL_TUT_STEPS = 10 // content steps 0..9; 10 = completion
+
+  const [mode, setMode] = useState<'tutorial' | 'free'>('tutorial')
+  const [tutStep, setTutStep] = useState(0)
+
+  const [filled, setFilled] = useState<Set<string>>(new Set())
+  const [pieces, setPieces] = useState<{ id: number; cells: Cells; dotIdx: number[] }[]>([])
+  const [selectedFigId, setSelectedFigId] = useState<number | null>(null)
+  const [rotIdx, setRotIdx] = useState(0)
+  const [clickPoints, setClickPoints] = useState<{ r: number; c: number }[]>([])
+  const [hoverCell, setHoverCell] = useState<{ r: number; c: number } | null>(null)
+  const [notation, setNotation] = useState('')
+  const [message, setMessage] = useState<string | null>(null)
+  const [pendingFairPlay, setPendingFairPlay] = useState<{ key: string } | null>(null)
+  const [lastPlacement, setLastPlacement] = useState<{ notation: string; figLabel: string } | null>(null)
+  const [ruleToggles, setRuleToggles] = useState({ support: false, steps: false, overhang: false, returnPath: false })
+
+  // -- state for the expanded tutorial (steps 3-9, added 2026-09-09) --
+  const [rulesPanelIdx, setRulesPanelIdx] = useState(0) // Step 3's 4-panel sub-carousel
+  const [deadCellAdvisory, setDeadCellAdvisory] = useState<number | null>(null) // Steps 4/5/6/7
+  const [notationInput, setNotationInput] = useState('')
+  const [notationInputError, setNotationInputError] = useState<string | null>(null)
+  const [shipmentIdx, setShipmentIdx] = useState(0) // 0..7 across the Step 6 sequence
+  const [shipmentDeadTotal, setShipmentDeadTotal] = useState(0)
+  const [shipmentHistory, setShipmentHistory] = useState<{ figId: number; cells: Cells; newDead: number }[]>([])
+  const [fairPlayDemoPhase, setFairPlayDemoPhase] = useState<'pending' | 'confirmed' | 'declined'>('pending')
+
+  const toggleRule = (k: keyof typeof ruleToggles) => setRuleToggles(r => ({ ...r, [k]: !r[k] }))
+  const highlights = mergeHighlights(
+    ruleToggles.support ? supportHL(filled, ROWS) : new Map(),
+    ruleToggles.steps ? stepsHL(filled, ROWS) : new Map(),
+    ruleToggles.overhang ? overhangHL(filled, ROWS) : new Map(),
+    ruleToggles.returnPath ? returnPathHL(filled, ROWS) : new Map(),
+  )
+  const RULE_COLORS: Record<string, string> = { support: C.green, steps: C.red, overhang: '#ffaa00', returnPath: C.cyan }
+
+  // Resets/seeds the container for one of the new self-contained exercises (Steps 4-7).
+  // Shared by the tutStep-change effect below AND each step's own "Reset" button.
+  function initStep(step: number) {
+    if (step === 1) {
+      setSelectedFigId(1); setClickPoints([]); setNotation(''); setMessage(null)
+    } else if (step === 4 || step === 5) {
+      setFilled(new Set()); setPieces([]); setSelectedFigId(15); setRotIdx(0); setClickPoints([])
+      setNotation(''); setMessage(null); setDeadCellAdvisory(null)
+      setNotationInput(''); setNotationInputError(null); setPendingFairPlay(null)
+    } else if (step === 6) {
+      setFilled(new Set()); setPieces([]); setSelectedFigId(SHIPMENT_FIGS[0]); setRotIdx(0); setClickPoints([])
+      setNotation(''); setMessage(null); setDeadCellAdvisory(null)
+      setNotationInput(''); setNotationInputError(null)
+      setShipmentIdx(0); setShipmentDeadTotal(0); setShipmentHistory([]); setPendingFairPlay(null)
+    } else if (step === 7) {
+      setFilled(stepClimbInitialFilled(ROWS)); setPieces([]); setSelectedFigId(null); setRotIdx(0); setClickPoints([])
+      setNotation(''); setMessage(null); setDeadCellAdvisory(null); setPendingFairPlay(null)
+    }
+  }
+
+  // Step 2 of the tutorial hands the player figure #1 (Mono, one cell) -- the simplest
+  // possible placement -- so the lesson isn't derailed by rotation or two-point notation.
+  // Steps 4-7 each seed their own self-contained exercise via initStep above.
+  useEffect(() => {
+    if (mode !== 'tutorial') return
+    if (tutStep === 1 || tutStep === 4 || tutStep === 5 || tutStep === 6 || tutStep === 7) {
+      initStep(tutStep)
+    } else if (tutStep === 8) {
+      setFairPlayDemoPhase('pending')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, tutStep])
+
+  const selectedFig = selectedFigId != null ? FIGURES.find(f => f.id === selectedFigId) ?? null : null
+  const orientations = selectedFig ? getOrientations(selectedFig.cells) : []
+  const pointsNeeded = selectedFig ? (selectedFig.dots.length >= 2 ? 2 : 1) : 0
+
+  function selectFigure(fig: Figure) {
+    setSelectedFigId(fig.id); setRotIdx(0); setClickPoints([]); setNotation(''); setMessage(null); setPendingFairPlay(null)
+  }
+
+  useEffect(() => {
+    if (!selectedFig || clickPoints.length < pointsNeeded) return
+    setNotation(formatNotation(selectedFig.id, clickPoints.slice(0, pointsNeeded), ROWS))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clickPoints, selectedFig?.id, pointsNeeded])
+
+  const ghostPlacement = useMemo(() => {
+    if (!selectedFig || clickPoints.length < pointsNeeded) return null
+    const clicked = clickPoints.slice(0, pointsNeeded)
+    const cells = pointsNeeded === 2
+      ? computePlacementFromDots(selectedFig, clicked)
+      : computePlacementFromAnchor(selectedFig, rotIdx, clicked[0])
+    if (!cells) return null
+    const result = checkPlacement(cells, filled, ROWS)
+    if (!result.ok && result.reason === 'Placement goes outside the container') return { set: undefined, valid: false }
+    return { set: new Set(cells.map(([r, c]) => cellKey(r, c))), valid: result.ok }
+  }, [selectedFig, clickPoints, pointsNeeded, rotIdx, filled])
+
+  const hoverPreview = useMemo(() => {
+    if (!selectedFig || !hoverCell || pointsNeeded !== 2 || clickPoints.length !== 1) return null
+    const [p1] = clickPoints
+    if (p1.r === hoverCell.r && p1.c === hoverCell.c) return null
+    const cells = computePlacementFromDots(selectedFig, [p1, hoverCell])
+    if (!cells) return null
+    const result = checkPlacement(cells, filled, ROWS)
+    if (!result.ok && result.reason === 'Placement goes outside the container') return null
+    return { set: new Set(cells.map(([r, c]) => cellKey(r, c))), valid: result.ok }
+  }, [selectedFig, hoverCell, clickPoints, pointsNeeded, filled])
+
+  // Step 5's live ghost, driven by the typed notation field instead of clicks.
+  const notationPreview = useMemo(() => {
+    if (!selectedFig || tutStep !== 5) return null
+    const parsed = parseNotation(notationInput, ROWS)
+    if ('error' in parsed) return null
+    if (parsed.points.length !== pointsNeeded) return null
+    const cells = pointsNeeded === 2
+      ? computePlacementFromDots(selectedFig, parsed.points)
+      : computePlacementFromAnchor(selectedFig, 0, parsed.points[0])
+    if (!cells) return null
+    const result = checkPlacement(cells, filled, ROWS)
+    return { set: new Set(cells.map(([r, c]) => cellKey(r, c))), valid: result.ok }
+  }, [selectedFig, notationInput, pointsNeeded, filled, tutStep])
+
+  const displayGhost = tutStep === 5 ? notationPreview : (ghostPlacement ?? hoverPreview)
+  const ghostCells = displayGhost?.set
+  const ghostValid = displayGhost?.valid ?? true
+
+  function handleCellClick(r: number, c: number) {
+    if (!selectedFig) { setMessage('Pick a figure from the bank first.'); return }
+    if (clickPoints.length < pointsNeeded) setClickPoints(p => [...p, { r, c }])
+  }
+
+  // `explicitPoints`, when given, is used instead of `clickPoints` -- needed by
+  // placeByNotation() below, since setClickPoints() wouldn't be visible yet within the
+  // same call (React state updates are async).
+  function place(explicitPoints?: { r: number; c: number }[]) {
+    if (!selectedFig) return
+    const clicked = (explicitPoints ?? clickPoints).slice(0, pointsNeeded)
+    if (clicked.length < pointsNeeded) { setMessage('Click the container to mark the reference point(s) first.'); return }
+    const cells = pointsNeeded === 2
+      ? computePlacementFromDots(selectedFig, clicked)
+      : computePlacementFromAnchor(selectedFig, rotIdx, clicked[0])
+    const cellsKey = cells ? [...cells].map(([r, c]) => cellKey(r, c)).sort().join('|') : null
+    const result = checkPlacement(cells, filled, ROWS, cellsKey != null && pendingFairPlay?.key === cellsKey)
+    if (!result.ok) {
+      if (result.needsFairPlay && cellsKey != null) {
+        setPendingFairPlay({ key: cellsKey })
+        setMessage(`${result.reason}. In a real match this needs the opponent's fair-play OK -- click Place again to confirm you'd still place it here.`)
+        return
+      }
+      setPendingFairPlay(null)
+      setMessage(`Invalid: ${result.reason}`)
+      setClickPoints([])
+      setNotation('')
+      return
+    }
+    setPendingFairPlay(null)
+    const beforeDead = computeDeadCells(filled, ROWS).size
+    const next = new Set(filled)
+    result.cells!.forEach(([r, c]) => next.add(cellKey(r, c)))
+    const afterDead = computeDeadCells(next, ROWS).size
+    const newDead = afterDead - beforeDead
+    setFilled(next)
+    setPieces(prev => [...prev, { id: selectedFig.id, cells: result.cells!, dotIdx: selectedFig.dots }])
+    setLastPlacement({ notation: notation || formatNotation(selectedFig.id, clicked, ROWS), figLabel: `${selectedFig.label} — ${selectedFig.name}` })
+    setMessage(null)
+    setClickPoints([])
+    setNotation('')
+    setNotationInput(''); setNotationInputError(null)
+    if (mode === 'tutorial') {
+      if (tutStep === 1) setTutStep(2)
+      else if (tutStep === 4 || tutStep === 5 || tutStep === 7) setDeadCellAdvisory(newDead)
+      else if (tutStep === 6) {
+        setDeadCellAdvisory(newDead)
+        setShipmentDeadTotal(t => t + newDead)
+        setShipmentHistory(h => [...h, { figId: selectedFig.id, cells: result.cells!, newDead }])
+        const nextIdx = shipmentIdx + 1
+        setShipmentIdx(nextIdx)
+        if (nextIdx < SHIPMENT_FIGS.length) { setSelectedFigId(SHIPMENT_FIGS[nextIdx]); setRotIdx(0) }
+        else setSelectedFigId(null)
+      }
+    }
+  }
+
+  // Step 5 (and, as an alternate input, Step 6): parse the typed notation field and
+  // place it through the exact same checkPlacement/dead-cell path as a click -- notation
+  // is just a different way of specifying the same reference points, never a shortcut
+  // around the engine.
+  function placeByNotation() {
+    if (!selectedFig) return
+    const parsed = parseNotation(notationInput, ROWS)
+    if ('error' in parsed) { setNotationInputError(parsed.error); return }
+    if (parsed.figureId !== selectedFig.id) {
+      setNotationInputError(`That notation is for figure ${String(parsed.figureId).padStart(2, '0')}, not ${selectedFig.label}.`)
+      return
+    }
+    if (parsed.points.length !== pointsNeeded) {
+      setNotationInputError(`${selectedFig.label} needs ${pointsNeeded} reference point${pointsNeeded > 1 ? 's' : ''} -- got ${parsed.points.length}.`)
+      return
+    }
+    setNotationInputError(null)
+    place(parsed.points)
+  }
+
+  function resetLastShipment() {
+    if (shipmentHistory.length === 0) return
+    const last = shipmentHistory[shipmentHistory.length - 1]
+    setFilled(f => {
+      const next = new Set(f)
+      last.cells.forEach(([r, c]) => next.delete(cellKey(r, c)))
+      return next
+    })
+    setPieces(prev => prev.slice(0, -1))
+    setShipmentHistory(h => h.slice(0, -1))
+    setShipmentDeadTotal(t => Math.max(0, t - last.newDead))
+    setShipmentIdx(i => Math.max(0, i - 1))
+    setSelectedFigId(last.figId); setRotIdx(0); setClickPoints([]); setNotation(''); setMessage(null); setDeadCellAdvisory(null)
+    setNotationInput(''); setNotationInputError(null)
+  }
+
+  function goBack() {
+    setTutStep(s => Math.max(0, s - 1))
+  }
+
+  function clearContainer() {
+    setFilled(new Set()); setPieces([]); setSelectedFigId(null); setClickPoints([])
+    setNotation(''); setMessage(null); setPendingFairPlay(null)
+  }
+
+  function startFreeMode() {
+    clearContainer()
+    setMode('free')
+  }
+
+  function restartTutorial() {
+    clearContainer()
+    setMode('tutorial')
+    setTutStep(0)
+  }
+
+  // Step-height illustration (now folded into Step 3's rule overview, panel 2 of 4):
+  // built from the real engine (rules.ts checkPlacement), not a hand-written screenshot,
+  // so it can never drift out of sync with the actual rule (item 6, 2026-09-08 TODO --
+  // the >3-cell step-height rule).
+  const step4Demo = useMemo(() => {
+    const demoFilled = new Set<string>()
+    for (let r = ROWS - 5; r <= ROWS - 1; r++) demoFilled.add(cellKey(r, 0)) // 5-cell stack at the entrance column
+    const attempt: Cells = [[ROWS - 1, 5]]
+    const result = checkPlacement(attempt, demoFilled, ROWS)
+    return { cells: demoFilled, ghost: new Set(attempt.map(([r, c]) => cellKey(r, c))), result }
+  }, [])
+
+  // Step 3 (2026-09-09): a static, non-blocking overview of all four hard placement
+  // rules -- each panel built from the real engine exactly like step4Demo above, never
+  // hand-written copy that could drift from what checkPlacement actually enforces.
+  const ruleOverviewDemos = useMemo(() => {
+    const support = (() => {
+      const f = new Set<string>()
+      const attempt: Cells = [[ROWS - 4, 7]]
+      return { filled: f, ghost: new Set(attempt.map(([r, c]) => cellKey(r, c))), result: checkPlacement(attempt, f, ROWS) }
+    })()
+    const overhang = (() => {
+      const f = new Set<string>([cellKey(ROWS - 1, 5)])
+      const attempt: Cells = [[ROWS - 2, 5], [ROWS - 2, 6], [ROWS - 2, 7], [ROWS - 2, 8]]
+      return { filled: f, ghost: new Set(attempt.map(([r, c]) => cellKey(r, c))), result: checkPlacement(attempt, f, ROWS) }
+    })()
+    const returnPath = (() => {
+      const f = new Set<string>()
+      for (let r = 0; r < ROWS; r++) for (let c = 0; c < 15; c++) if (!(r === ROWS - 1 && c === 0)) f.add(cellKey(r, c))
+      const attempt: Cells = [[ROWS - 1, 0]]
+      return { filled: f, ghost: new Set(attempt.map(([r, c]) => cellKey(r, c))), result: checkPlacement(attempt, f, ROWS) }
+    })()
+    return [
+      {
+        title: 'SUPPORT', headline: 'Every piece needs something to rest on',
+        body: "Nothing in the container may float — every figure must touch the floor, or an already-placed piece, somewhere. Watch what happens when we try to drop a piece straight into empty air:",
+        note: "Hard rule — unlike overhang below, there's no fair-play exception for it.",
+        demo: support,
+      },
+      {
+        title: 'STEPS', headline: "Cargo can't cross a step taller than 3 cells",
+        body: 'Here the entrance column is stacked 5 cells high. Trying to place a figure past it — straight across that drop — gets rejected, even though the target cell itself is empty and on the floor:',
+        note: 'A step of 2 or 3 cells is passable; taller than that blocks delivery through it until another placement lowers the gap — the same going up as going down.',
+        demo: { filled: step4Demo.cells, ghost: step4Demo.ghost, result: step4Demo.result },
+      },
+      {
+        title: 'OVERHANG & FAIR PLAY', headline: 'Most of a piece can hang over empty space — up to a point',
+        body: 'A figure doesn’t need every cell supported, only enough of it does. Here, one corner of this figure rests on a small ledge; the rest hangs over open air:',
+        note: 'Over 50% unsupported needs the opponent’s explicit fair-play OK — you’ll walk through exactly how that works, both ways, later in this tutorial.',
+        demo: overhang,
+      },
+      {
+        title: 'RETURN PATH', headline: "The very last move can't seal the container shut",
+        body: 'A placement is refused if it would leave nowhere left to deliver cargo, anywhere in the whole container — here every cell but the entrance is already full, so even a single-cell Mono is rejected if it lands here:',
+        note: "This isn't about the figure's size or shape — a Mono is as small as it gets and still can't take this cell. It only guards the literal last reachable cell. Walling off a smaller pocket earlier is legal — those cells simply become permanently dead space.",
+        demo: returnPath,
+      },
+    ]
+  }, [step4Demo])
+
+  // Step 8: same >50%-overhang scenario as the Step 3 overview panel, but interactive --
+  // walked through BOTH outcomes (confirm / decline), which the real free-mode double-
+  // click flow can't show on its own since Sandbox has no live second player.
+  const fairPlayDemo = useMemo(() => {
+    const f = new Set<string>([cellKey(ROWS - 1, 5)])
+    const attempt: Cells = [[ROWS - 2, 5], [ROWS - 2, 6], [ROWS - 2, 7], [ROWS - 2, 8]]
+    return { filled: f, attempt, ghost: new Set(attempt.map(([r, c]) => cellKey(r, c))) }
+  }, [])
+  const fairPlayCheck = checkPlacement(fairPlayDemo.attempt, fairPlayDemo.filled, ROWS, fairPlayDemoPhase === 'confirmed')
+
+  const stepClimbAboveWallRow = ROWS - 5
+  const stepClimbBridged = (() => {
+    if (tutStep !== 7) return false
+    if (filled.has(cellKey(stepClimbAboveWallRow, STEP_CLIMB_WALL_COL))) return true
+    return checkPlacement([[stepClimbAboveWallRow, STEP_CLIMB_WALL_COL]], filled, ROWS).ok
+  })()
+  const stepClimbDone = pieces.some(p => p.cells.some(([r, c]) => r === stepClimbAboveWallRow && c === STEP_CLIMB_WALL_COL))
+
+  return (
+    <div style={{ background: C.graphite, minHeight: '100vh', paddingTop: '3.5rem' }}>
+      <div style={{ background: C.graphite2, borderBottom: `1px solid ${C.steelDim}30` }} className="px-4 md:px-6 py-3 flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-4">
+          <span style={{ color: C.steel, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>SANDBOX</span>
+          <span style={{ background: `${C.steelDim}30`, color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 10, padding: '3px 10px' }}>
+            UNRATED · FREE PLACEMENT · 15×{ROWS}
+          </span>
+          {mode === 'tutorial' && (
+            <span style={{ background: `${C.cyan}20`, color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 10, padding: '3px 10px' }}>
+              TUTORIAL · STEP {Math.min(tutStep + 1, TOTAL_TUT_STEPS)} OF {TOTAL_TUT_STEPS}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-3">
+          {mode === 'free' && (
+            <button onClick={restartTutorial} style={{ color: C.steelDim, border: `1px solid ${C.steelDim}40`, fontSize: 12, padding: '4px 12px' }}
+              className="hover:text-deck transition-colors">Restart tutorial</button>
+          )}
+          {mode === 'tutorial' && tutStep > 0 && tutStep <= TOTAL_TUT_STEPS && (
+            <button onClick={goBack} style={{ color: C.steelDim, border: `1px solid ${C.steelDim}40`, fontSize: 12, padding: '4px 12px', cursor: 'pointer' }}
+              className="hover:text-deck transition-colors">← Back</button>
+          )}
+          {mode === 'tutorial' && tutStep < TOTAL_TUT_STEPS && (
+            <button onClick={startFreeMode} style={{ color: C.steelDim, border: `1px solid ${C.steelDim}40`, fontSize: 12, padding: '4px 12px' }}
+              className="hover:text-deck transition-colors">Skip to free sandbox</button>
+          )}
+          {(mode === 'free' || (mode === 'tutorial' && tutStep === 1)) && (
+            <button onClick={() => (mode === 'free' ? clearContainer() : initStep(1))} style={{ color: C.steelDim, border: `1px solid ${C.steelDim}40`, fontSize: 12, padding: '4px 12px' }}
+              className="hover:text-deck transition-colors">Clear container</button>
+          )}
+        </div>
+      </div>
+
+      {mode === 'tutorial' && tutStep === 0 && (
+        <div className="max-w-2xl mx-auto px-4 py-16 text-center">
+          <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 12, marginBottom: 12 }}>STEP 1 OF 10 — THE GOAL</p>
+          <h2 style={{ color: C.deck, fontSize: 26, fontWeight: 700, marginBottom: 16 }}>Stow cargo, close rows and columns</h2>
+          <p style={{ color: C.steel, fontSize: 15, lineHeight: 1.6, marginBottom: 28 }}>
+            In a real match your opponent chooses which cargo figure you receive next, and you place
+            it in your container. Fill every cell of a row or a column and it closes — closing 5 rows
+            and/or columns first wins the game. This sandbox skips the opponent: pick any figure,
+            any time, and see how placement really works before you play for real.
+          </p>
+          <button onClick={() => setTutStep(1)} style={{ background: C.blue, color: C.deck, fontWeight: 600, fontSize: 14, padding: '12px 28px', border: 'none', cursor: 'pointer' }}>Start →</button>
+        </div>
+      )}
+
+      {mode === 'tutorial' && tutStep === 1 && selectedFig && (
+        <div className="max-w-5xl mx-auto px-4 py-8 grid md:grid-cols-[1fr_320px] gap-6">
+          <div>
+            <div className="overflow-x-auto">
+              <ContainerGrid filledCells={filled} rows={ROWS} showJKSeparator cellSize={30}
+                pieces={pieces} onCellClick={handleCellClick}
+                onCellHover={(r, c) => setHoverCell({ r, c })} onCellLeave={() => setHoverCell(null)}
+                ghostCells={ghostCells} ghostValid={ghostValid} markCells={clickPoints} />
+            </div>
+            {message && <p style={{ color: C.red, fontSize: 13, marginTop: 10 }}>{message}</p>}
+          </div>
+          <div style={{ border: `1px solid ${C.cyan}40`, background: C.graphite2 }} className="p-5 h-fit">
+            <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>STEP 2 OF 10 — ENTRANCE &amp; FIRST PLACEMENT</p>
+            <p style={{ color: C.steel, fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>
+              The cyan cell is <b style={{ color: C.cyan }}>A0</b> — the entrance. Every piece of cargo
+              must be reachable from here. You've been handed figure <b style={{ color: C.deck }}>{selectedFig.label} — {selectedFig.name}</b>,
+              a single cell — the simplest placement there is.
+            </p>
+            <p style={{ color: C.steelDim, fontSize: 12, marginBottom: 12 }}>Click any cell on the bottom row to place it.</p>
+            <div style={{ background: C.graphite, border: `1px solid ${C.cyan}22`, padding: 14 }} className="flex items-center justify-center mb-4">
+              <FigurePreview cells={selectedFig.cells} cardSize={60} color={C.cyan} cellPx={14} dots={selectedFig.dots} number={selectedFig.id} />
+            </div>
+            <button onClick={() => place()} disabled={clickPoints.length < pointsNeeded}
+              style={{ background: clickPoints.length >= pointsNeeded ? C.cyan : C.steelDim, color: C.graphite, fontWeight: 700, fontSize: 13, padding: '10px 20px', border: 'none', width: '100%', cursor: clickPoints.length >= pointsNeeded ? 'pointer' : 'default' }}>
+              Place
+            </button>
+          </div>
+        </div>
+      )}
+
+      {mode === 'tutorial' && tutStep === 2 && lastPlacement && (
+        <div className="max-w-2xl mx-auto px-4 py-16 text-center">
+          <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 12, marginBottom: 12 }}>STEP 3 OF 10 — NOTATION</p>
+          <h2 style={{ color: C.deck, fontSize: 24, fontWeight: 700, marginBottom: 16 }}>You just recorded your first move</h2>
+          <p style={{ color: C.steelDim, fontSize: 12, marginBottom: 8 }}>{lastPlacement.figLabel}</p>
+          <div style={{ background: C.graphite2, border: `1px solid ${C.cyan}30`, padding: '18px 24px', marginBottom: 20 }}>
+            <code style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 22, fontWeight: 700 }}>{lastPlacement.notation}</code>
+          </div>
+          <p style={{ color: C.steel, fontSize: 15, lineHeight: 1.6, marginBottom: 28 }}>
+            That's the figure's number followed by the cell(s) its reference dots landed on —
+            the same notation you'll report to your opponent (or the server records) in a real match.
+            Every figure has 1 or 2 reference dots; a wider figure needs two cells to pin down its
+            rotation, a single-cell figure like this one needs just one.
+          </p>
+          <button onClick={() => setTutStep(3)} style={{ background: C.blue, color: C.deck, fontWeight: 600, fontSize: 14, padding: '12px 28px', border: 'none', cursor: 'pointer' }}>Next →</button>
+        </div>
+      )}
+
+      {mode === 'tutorial' && tutStep === 3 && (() => {
+        const panel = ruleOverviewDemos[rulesPanelIdx]
+        return (
+          <div className="max-w-3xl mx-auto px-4 py-12">
+            <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 12, marginBottom: 12, textAlign: 'center' }}>
+              STEP 4 OF 10 — CORE RULES ({rulesPanelIdx + 1}/4 — {panel.title})
+            </p>
+            <h2 style={{ color: C.deck, fontSize: 24, fontWeight: 700, marginBottom: 16, textAlign: 'center' }}>{panel.headline}</h2>
+            <p style={{ color: C.steel, fontSize: 15, lineHeight: 1.6, marginBottom: 24, textAlign: 'center' }}>{panel.body}</p>
+            <div className="flex justify-center mb-4">
+              <ContainerGrid filledCells={panel.demo.filled} rows={ROWS} cellSize={22}
+                ghostCells={panel.demo.ghost} ghostValid={panel.demo.result.ok} />
+            </div>
+            <div style={{ background: `${C.red}12`, border: `1px solid ${C.red}40`, padding: '14px 18px', marginBottom: 20, textAlign: 'center' }}>
+              <code style={{ color: C.red, fontFamily: "'JetBrains Mono',monospace", fontSize: 13 }}>{panel.demo.result.reason}</code>
+            </div>
+            <p style={{ color: C.steelDim, fontSize: 13, lineHeight: 1.6, marginBottom: 24, textAlign: 'center' }}>{panel.note}</p>
+            <div className="flex justify-center items-center gap-3">
+              {rulesPanelIdx > 0 && (
+                <button onClick={() => setRulesPanelIdx(i => i - 1)} style={{ color: C.steelDim, border: `1px solid ${C.steelDim}40`, fontSize: 13, padding: '10px 18px', cursor: 'pointer' }} className="hover:text-deck transition-colors">← Prev rule</button>
+              )}
+              {rulesPanelIdx < ruleOverviewDemos.length - 1 ? (
+                <button onClick={() => setRulesPanelIdx(i => i + 1)} style={{ background: C.blue, color: C.deck, fontWeight: 600, fontSize: 14, padding: '12px 28px', border: 'none', cursor: 'pointer' }}>Next rule →</button>
+              ) : (
+                <button onClick={() => { setRulesPanelIdx(0); setTutStep(4) }} style={{ background: C.blue, color: C.deck, fontWeight: 600, fontSize: 14, padding: '12px 28px', border: 'none', cursor: 'pointer' }}>Next step →</button>
+              )}
+            </div>
+          </div>
+        )
+      })()}
+
+      {mode === 'tutorial' && tutStep === 4 && selectedFig && (
+        <div className="max-w-5xl mx-auto px-4 py-8 grid md:grid-cols-[1fr_340px] gap-6">
+          <div>
+            <div className="overflow-x-auto">
+              <ContainerGrid filledCells={filled} rows={ROWS} showJKSeparator cellSize={26}
+                pieces={pieces} onCellClick={handleCellClick}
+                onCellHover={(r, c) => setHoverCell({ r, c })} onCellLeave={() => setHoverCell(null)}
+                ghostCells={ghostCells} ghostValid={ghostValid} markCells={clickPoints} />
+            </div>
+            {message && <p style={{ color: C.red, fontSize: 13, marginTop: 10 }}>{message}</p>}
+            {deadCellAdvisory != null && (
+              deadCellAdvisory > 0
+                ? <p style={{ color: '#ffaa00', fontSize: 13, marginTop: 10 }}>This placement walled off {deadCellAdvisory} cell{deadCellAdvisory > 1 ? 's' : ''} — they can never receive cargo now. Try Reset for a cleaner spot.</p>
+                : <p style={{ color: C.green, fontSize: 13, marginTop: 10 }}>Clean placement — no cells were walled off.</p>
+            )}
+          </div>
+          <div style={{ border: `1px solid ${C.cyan}40`, background: C.graphite2 }} className="p-5 h-fit">
+            <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>STEP 5 OF 10 — MEET F15: PLACE BY POINTS</p>
+            <p style={{ color: C.steel, fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>
+              <b style={{ color: C.deck }}>{selectedFig.label} — {selectedFig.name}</b> needs <b style={{ color: C.cyan }}>two</b> reference
+              points, not one — a single point can't pin down both where and which way an asymmetric shape sits.
+              The first click and the second aren't interchangeable: swap their order and you get a different orientation.
+            </p>
+            <div style={{ background: C.graphite, border: `1px solid ${C.cyan}22`, padding: 14 }} className="flex items-center justify-center mb-4">
+              <FigurePreview cells={selectedFig.cells} cardSize={70} color={C.cyan} cellPx={14} dots={selectedFig.dots} number={selectedFig.id} />
+            </div>
+            <p style={{ color: C.steelDim, fontSize: 12, marginBottom: 8 }}>
+              Click two cells in the container, in order. Try to place it without walling off any cell — you'll find out right after whether you did.
+            </p>
+            {notation && <code style={{ color: C.deck, fontFamily: "'JetBrains Mono',monospace", fontSize: 13, display: 'block', marginBottom: 12 }}>{notation}</code>}
+            <div className="flex gap-2 mb-3">
+              <button onClick={() => place()} disabled={clickPoints.length < pointsNeeded}
+                style={{ background: clickPoints.length >= pointsNeeded ? C.cyan : C.steelDim, color: C.graphite, fontWeight: 700, fontSize: 13, padding: '10px 16px', border: 'none', flex: 1, cursor: clickPoints.length >= pointsNeeded ? 'pointer' : 'default' }}>Place</button>
+              <button onClick={() => initStep(4)} style={{ color: C.steelDim, border: `1px solid ${C.steelDim}40`, fontSize: 13, padding: '10px 14px', cursor: 'pointer' }} className="hover:text-deck transition-colors">Reset</button>
+            </div>
+            {deadCellAdvisory != null && (
+              <button onClick={() => setTutStep(5)} style={{ background: C.blue, color: C.deck, fontWeight: 600, fontSize: 13, padding: '10px 18px', border: 'none', width: '100%', cursor: 'pointer' }}>Next →</button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {mode === 'tutorial' && tutStep === 5 && selectedFig && (
+        <div className="max-w-5xl mx-auto px-4 py-8 grid md:grid-cols-[1fr_340px] gap-6">
+          <div>
+            <div className="overflow-x-auto">
+              <ContainerGrid filledCells={filled} rows={ROWS} showJKSeparator cellSize={26}
+                pieces={pieces} ghostCells={ghostCells} ghostValid={ghostValid} />
+            </div>
+            {deadCellAdvisory != null && (
+              deadCellAdvisory > 0
+                ? <p style={{ color: '#ffaa00', fontSize: 13, marginTop: 10 }}>This placement walled off {deadCellAdvisory} cell{deadCellAdvisory > 1 ? 's' : ''} — they can never receive cargo now. Try Reset for a cleaner spot.</p>
+                : <p style={{ color: C.green, fontSize: 13, marginTop: 10 }}>Clean placement — no cells were walled off.</p>
+            )}
+          </div>
+          <div style={{ border: `1px solid ${C.cyan}40`, background: C.graphite2 }} className="p-5 h-fit">
+            <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>STEP 6 OF 10 — PLACE BY NOTATION</p>
+            <p style={{ color: C.steel, fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>
+              Same figure, same two reference dots — this time write where they land instead of clicking them.
+              Format: figure id, then each point as a row letter and column number, e.g. <code style={{ color: C.cyan }}>15D4B3</code>.
+            </p>
+            <div style={{ background: C.graphite, border: `1px solid ${C.cyan}22`, padding: 14 }} className="flex items-center justify-center mb-4">
+              <FigurePreview cells={selectedFig.cells} cardSize={70} color={C.cyan} cellPx={14} dots={selectedFig.dots} number={selectedFig.id} />
+            </div>
+            <input value={notationInput} onChange={e => setNotationInput(e.target.value)}
+              placeholder={`15${rowToLetter(ROWS - 1, ROWS)}5${rowToLetter(ROWS - 2, ROWS)}7`}
+              style={{ width: '100%', background: C.graphite, border: `1px solid ${C.cyan}40`, color: C.deck, fontFamily: "'JetBrains Mono',monospace", fontSize: 14, padding: '10px 12px', marginBottom: 8 }} />
+            {notationInputError && <p style={{ color: C.red, fontSize: 12, marginBottom: 8 }}>{notationInputError}</p>}
+            <div className="flex gap-2 mb-3">
+              <button onClick={placeByNotation} disabled={!notationInput}
+                style={{ background: notationInput ? C.cyan : C.steelDim, color: C.graphite, fontWeight: 700, fontSize: 13, padding: '10px 16px', border: 'none', flex: 1, cursor: notationInput ? 'pointer' : 'default' }}>Place</button>
+              <button onClick={() => initStep(5)} style={{ color: C.steelDim, border: `1px solid ${C.steelDim}40`, fontSize: 13, padding: '10px 14px', cursor: 'pointer' }} className="hover:text-deck transition-colors">Reset</button>
+            </div>
+            {deadCellAdvisory != null && (
+              <button onClick={() => setTutStep(6)} style={{ background: C.blue, color: C.deck, fontWeight: 600, fontSize: 13, padding: '10px 18px', border: 'none', width: '100%', cursor: 'pointer' }}>Next →</button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {mode === 'tutorial' && tutStep === 6 && (
+        <div className="max-w-5xl mx-auto px-4 py-8 grid md:grid-cols-[1fr_340px] gap-6">
+          <div>
+            <div className="overflow-x-auto">
+              <ContainerGrid filledCells={filled} rows={ROWS} showJKSeparator cellSize={26}
+                pieces={pieces} onCellClick={handleCellClick}
+                onCellHover={(r, c) => setHoverCell({ r, c })} onCellLeave={() => setHoverCell(null)}
+                ghostCells={ghostCells} ghostValid={ghostValid} markCells={clickPoints} />
+            </div>
+            {message && <p style={{ color: C.red, fontSize: 13, marginTop: 10 }}>{message}</p>}
+            {deadCellAdvisory != null && (
+              deadCellAdvisory > 0
+                ? <p style={{ color: '#ffaa00', fontSize: 13, marginTop: 10 }}>That one walled off {deadCellAdvisory} cell{deadCellAdvisory > 1 ? 's' : ''}.</p>
+                : <p style={{ color: C.green, fontSize: 13, marginTop: 10 }}>Clean — no cells walled off.</p>
+            )}
+          </div>
+          <div style={{ border: `1px solid ${C.cyan}40`, background: C.graphite2 }} className="p-5 h-fit">
+            <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>
+              STEP 7 OF 10 — {shipmentIdx < SHIPMENT_CORE_COUNT ? `SHIPMENT ${shipmentIdx + 1} OF ${SHIPMENT_CORE_COUNT}` : shipmentIdx < SHIPMENT_FIGS.length ? `BONUS ${shipmentIdx - SHIPMENT_CORE_COUNT + 1} OF ${SHIPMENT_FIGS.length - SHIPMENT_CORE_COUNT}` : 'ALL SHIPMENTS DONE'}
+            </p>
+            <p style={{ color: C.steel, fontSize: 13, lineHeight: 1.6, marginBottom: 12 }}>
+              Five figures, fed one at a time — just like a real opponent handing you cargo. Place each one, by
+              clicking or by notation, and try to finish all five with <b style={{ color: C.deck }}>zero</b> dead cells.
+              Two harder bonus figures follow if you want more practice.
+            </p>
+            {selectedFig && shipmentIdx < SHIPMENT_FIGS.length && (
+              <div style={{ background: C.graphite, border: `1px solid ${C.cyan}22`, padding: 14 }} className="flex items-center justify-center mb-4">
+                <FigurePreview cells={selectedFig.cells} cardSize={70} color={C.cyan} cellPx={14} dots={selectedFig.dots} number={selectedFig.id} />
+              </div>
+            )}
+            {selectedFig && shipmentIdx < SHIPMENT_FIGS.length && (
+              <>
+                {notation && <code style={{ color: C.deck, fontFamily: "'JetBrains Mono',monospace", fontSize: 13, display: 'block', marginBottom: 10 }}>{notation}</code>}
+                <div className="flex gap-2 mb-3">
+                  <button onClick={() => place()} disabled={clickPoints.length < pointsNeeded}
+                    style={{ background: clickPoints.length >= pointsNeeded ? C.cyan : C.steelDim, color: C.graphite, fontWeight: 700, fontSize: 12, padding: '8px 14px', border: 'none', flex: 1, cursor: clickPoints.length >= pointsNeeded ? 'pointer' : 'default' }}>Place (click points)</button>
+                </div>
+                <input value={notationInput} onChange={e => setNotationInput(e.target.value)}
+                  placeholder="or type notation, e.g. 08C0B0A0A1"
+                  style={{ width: '100%', background: C.graphite, border: `1px solid ${C.cyan}40`, color: C.deck, fontFamily: "'JetBrains Mono',monospace", fontSize: 13, padding: '8px 10px', marginBottom: 8 }} />
+                {notationInputError && <p style={{ color: C.red, fontSize: 12, marginBottom: 8 }}>{notationInputError}</p>}
+                <button onClick={placeByNotation} disabled={!notationInput}
+                  style={{ background: notationInput ? C.cyan : C.steelDim, color: C.graphite, fontWeight: 700, fontSize: 12, padding: '8px 14px', border: 'none', width: '100%', cursor: notationInput ? 'pointer' : 'default', marginBottom: 12 }}>Place (from notation)</button>
+              </>
+            )}
+            <p style={{ color: C.steelDim, fontSize: 12, marginBottom: 12 }}>Dead cells so far: <b style={{ color: shipmentDeadTotal > 0 ? '#ffaa00' : C.green }}>{shipmentDeadTotal}</b></p>
+            <div className="flex gap-2">
+              <button onClick={resetLastShipment} disabled={shipmentHistory.length === 0}
+                style={{ color: shipmentHistory.length ? C.steelDim : `${C.steelDim}50`, border: `1px solid ${C.steelDim}40`, fontSize: 12, padding: '8px 10px', flex: 1, cursor: shipmentHistory.length ? 'pointer' : 'default' }}
+                className={shipmentHistory.length ? 'hover:text-deck transition-colors' : ''}>Reset last</button>
+              <button onClick={() => initStep(6)} style={{ color: C.steelDim, border: `1px solid ${C.steelDim}40`, fontSize: 12, padding: '8px 10px', flex: 1, cursor: 'pointer' }} className="hover:text-deck transition-colors">Reset all</button>
+              {shipmentIdx >= SHIPMENT_CORE_COUNT && (
+                <button onClick={() => setTutStep(7)} style={{ background: C.blue, color: C.deck, fontWeight: 600, fontSize: 12, padding: '8px 14px', border: 'none', flex: 1, cursor: 'pointer' }}>Next →</button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {mode === 'tutorial' && tutStep === 7 && (
+        <div className="max-w-5xl mx-auto px-4 py-8 grid md:grid-cols-[1fr_340px] gap-6">
+          <div>
+            <div className="overflow-x-auto">
+              <ContainerGrid filledCells={filled} rows={ROWS} showJKSeparator cellSize={26}
+                pieces={pieces} onCellClick={handleCellClick}
+                onCellHover={(r, c) => setHoverCell({ r, c })} onCellLeave={() => setHoverCell(null)}
+                ghostCells={ghostCells} ghostValid={ghostValid} markCells={clickPoints} />
+            </div>
+            {message && <p style={{ color: C.red, fontSize: 13, marginTop: 10 }}>{message}</p>}
+            {deadCellAdvisory != null && stepClimbBridged && (
+              deadCellAdvisory > 0
+                ? <p style={{ color: '#ffaa00', fontSize: 13, marginTop: 10 }}>That placement walled off {deadCellAdvisory} cell{deadCellAdvisory > 1 ? 's' : ''}. Reset and try another spot for a clean one.</p>
+                : <p style={{ color: C.green, fontSize: 13, marginTop: 10 }}>Clean — 0 new dead cells.</p>
+            )}
+          </div>
+          <div style={{ border: `1px solid ${C.cyan}40`, background: C.graphite2 }} className="p-5 h-fit">
+            <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>STEP 8 OF 10 — CLIMBING (AND CAREFULLY DESCENDING) A TALL STEP</p>
+            {!stepClimbBridged ? (
+              <>
+                <p style={{ color: C.steel, fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>
+                  F4 is standing on end in the middle of the container — a wall 4 cells tall, too tall to cross
+                  from either side. You can fix the situation by placing a figure to the left of the tall step.
+                  You have a repair toolkit — choose the right figure and place it so you can pass further.
+                </p>
+                <div className="flex gap-2 mb-3">
+                  {[1, 2, 3].map(id => {
+                    const f = FIGURES.find(ff => ff.id === id)!
+                    return (
+                      <button key={id} onClick={() => selectFigure(f)}
+                        style={{ background: selectedFigId === id ? C.cyan : 'transparent', color: selectedFigId === id ? C.graphite : C.cyan, border: `1px solid ${C.cyan}`, fontWeight: 700, fontSize: 12, padding: '10px 8px', flex: 1, cursor: 'pointer' }}>
+                        {f.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </>
+            ) : (
+              <>
+                <p style={{ color: C.steel, fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>
+                  The gap is bridged — the space right above the wall is reachable now. Place cargo carefully
+                  to the right of the tall step, hanging over open air, to gently set down fragile cargo.
+                  Choose the right cargo and reduce the height of the problem: <b style={{ color: C.deck }}>F01
+                  (Mono)</b> rests safely right on top of the wall, no risk. <b style={{ color: C.deck }}>F05</b>{' '}
+                  reaches further but hangs mostly over open air — that needs your fair-play OK, same as the
+                  overhang rule from Step 4.
+                </p>
+                <div className="flex gap-2 mb-3">
+                  {[5, 1].map(id => {
+                    const f = FIGURES.find(ff => ff.id === id)!
+                    return (
+                      <button key={id} onClick={() => selectFigure(f)}
+                        style={{ background: selectedFigId === id ? C.cyan : 'transparent', color: selectedFigId === id ? C.graphite : C.cyan, border: `1px solid ${C.cyan}`, fontWeight: 700, fontSize: 12, padding: '10px 8px', flex: 1, cursor: 'pointer' }}>
+                        {f.label} — {f.name}
+                      </button>
+                    )
+                  })}
+                </div>
+              </>
+            )}
+            {selectedFig && (
+              <>
+                {notation && <code style={{ color: C.deck, fontFamily: "'JetBrains Mono',monospace", fontSize: 13, display: 'block', marginBottom: 10 }}>{notation}</code>}
+                <button onClick={() => place()} disabled={clickPoints.length < pointsNeeded}
+                  style={{ background: clickPoints.length >= pointsNeeded ? C.cyan : C.steelDim, color: C.graphite, fontWeight: 700, fontSize: 12, padding: '10px 14px', border: 'none', width: '100%', cursor: clickPoints.length >= pointsNeeded ? 'pointer' : 'default', marginBottom: 10 }}>Place</button>
+              </>
+            )}
+            <div className="flex gap-2">
+              <button onClick={() => initStep(7)} style={{ color: C.steelDim, border: `1px solid ${C.steelDim}40`, fontSize: 12, padding: '8px 12px', flex: 1, cursor: 'pointer' }} className="hover:text-deck transition-colors">Reset</button>
+              {stepClimbDone && (
+                <button onClick={() => setTutStep(8)} style={{ background: C.blue, color: C.deck, fontWeight: 600, fontSize: 12, padding: '8px 14px', border: 'none', flex: 1, cursor: 'pointer' }}>Next →</button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {mode === 'tutorial' && tutStep === 8 && (
+        <div className="max-w-3xl mx-auto px-4 py-12">
+          <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 12, marginBottom: 12, textAlign: 'center' }}>STEP 9 OF 10 — FAIR PLAY, BOTH WAYS</p>
+          <h2 style={{ color: C.deck, fontSize: 24, fontWeight: 700, marginBottom: 16, textAlign: 'center' }}>Your opponent can say yes — or no</h2>
+          <p style={{ color: C.steel, fontSize: 15, lineHeight: 1.6, marginBottom: 24, textAlign: 'center' }}>
+            The same overhang scenario from the rules overview — but this time you see both of your opponent's
+            possible answers, not just the happy path.
+          </p>
+          <div className="flex justify-center mb-4">
+            <ContainerGrid filledCells={fairPlayDemoPhase === 'confirmed' ? new Set([...fairPlayDemo.filled, ...fairPlayDemo.ghost]) : fairPlayDemo.filled}
+              rows={ROWS} cellSize={26}
+              ghostCells={fairPlayDemoPhase === 'declined' ? fairPlayDemo.ghost : undefined}
+              ghostValid={false} />
+          </div>
+          {fairPlayDemoPhase === 'pending' && (
+            <>
+              <div style={{ background: `${C.red}12`, border: `1px solid ${C.red}40`, padding: '14px 18px', marginBottom: 20, textAlign: 'center' }}>
+                <code style={{ color: C.red, fontFamily: "'JetBrains Mono',monospace", fontSize: 13 }}>{fairPlayCheck.reason}</code>
+              </div>
+              <div className="flex justify-center gap-3">
+                <button onClick={() => setFairPlayDemoPhase('confirmed')} style={{ background: C.green, color: C.graphite, fontWeight: 700, fontSize: 13, padding: '10px 20px', border: 'none', cursor: 'pointer' }}>✓ Opponent confirms</button>
+                <button onClick={() => setFairPlayDemoPhase('declined')} style={{ background: C.red, color: C.deck, fontWeight: 700, fontSize: 13, padding: '10px 20px', border: 'none', cursor: 'pointer' }}>✗ Opponent declines</button>
+              </div>
+            </>
+          )}
+          {fairPlayDemoPhase === 'confirmed' && (
+            <>
+              <div style={{ background: `${C.green}12`, border: `1px solid ${C.green}40`, padding: '14px 18px', marginBottom: 20, textAlign: 'center' }}>
+                <code style={{ color: C.green, fontFamily: "'JetBrains Mono',monospace", fontSize: 13 }}>Placed — both players confirmed it.</code>
+              </div>
+              <p style={{ color: C.steel, fontSize: 14, textAlign: 'center', marginBottom: 20 }}>
+                In a real match, your opponent explicitly agrees to this exact placement before it's allowed —
+                never automatic, never one-sided.
+              </p>
+              <div className="flex justify-center"><button onClick={() => setFairPlayDemoPhase('pending')} style={{ color: C.steelDim, border: `1px solid ${C.steelDim}40`, fontSize: 12, padding: '8px 14px', cursor: 'pointer' }} className="hover:text-deck transition-colors">See the decline instead →</button></div>
+            </>
+          )}
+          {fairPlayDemoPhase === 'declined' && (
+            <>
+              <div style={{ background: `${C.steelDim}12`, border: `1px solid ${C.steelDim}40`, padding: '14px 18px', marginBottom: 20, textAlign: 'center' }}>
+                <code style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 13 }}>Declined — nothing was placed.</code>
+              </div>
+              <p style={{ color: C.steel, fontSize: 14, textAlign: 'center', marginBottom: 20 }}>
+                Your opponent can also say no. Nothing is placed — you keep the figure and try somewhere else.
+              </p>
+              <div className="flex justify-center"><button onClick={() => setFairPlayDemoPhase('pending')} style={{ color: C.steelDim, border: `1px solid ${C.steelDim}40`, fontSize: 12, padding: '8px 14px', cursor: 'pointer' }} className="hover:text-deck transition-colors">See the confirm instead →</button></div>
+            </>
+          )}
+          <div className="flex justify-center mt-6">
+            <button onClick={() => setTutStep(9)} style={{ background: C.blue, color: C.deck, fontWeight: 600, fontSize: 14, padding: '12px 28px', border: 'none', cursor: 'pointer' }}>Next →</button>
+          </div>
+        </div>
+      )}
+
+      {mode === 'tutorial' && tutStep === 9 && (
+        <div className="max-w-2xl mx-auto px-4 py-16">
+          <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 12, marginBottom: 12, textAlign: 'center' }}>STEP 10 OF 10 — HOW TO ACTUALLY WIN</p>
+          <h2 style={{ color: C.deck, fontSize: 24, fontWeight: 700, marginBottom: 20, textAlign: 'center' }}>A few things worth watching for</h2>
+          <div style={{ color: C.steel, fontSize: 15, lineHeight: 1.9 }}>
+            <p>— Keep rows in play as long as possible — avoid creating dead cells.</p>
+            <p>— Hand your opponent the more awkward figure when you get to choose.</p>
+            <p>— Avoid building tall steps that cost you extra moves to fix later.</p>
+            <p>— Keep an eye on passability across the whole container.</p>
+            <p>— Don't leave narrow bottlenecks.</p>
+          </div>
+          <div className="flex justify-center mt-8">
+            <button onClick={() => setTutStep(10)} style={{ background: C.blue, color: C.deck, fontWeight: 600, fontSize: 14, padding: '12px 28px', border: 'none', cursor: 'pointer' }}>Finish tutorial →</button>
+          </div>
+        </div>
+      )}
+
+      {mode === 'tutorial' && tutStep === 10 && (
+        <div className="max-w-2xl mx-auto px-4 py-16 text-center">
+          <div style={{ width: 64, height: 64, borderRadius: '50%', background: `${C.cyan}20`, border: `2px solid ${C.cyan}`, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', fontSize: 28 }}>🏅</div>
+          <h2 style={{ color: C.deck, fontSize: 24, fontWeight: 700, marginBottom: 16 }}>Your adventure at PuzzleStow has begun</h2>
+          <p style={{ color: C.steel, fontSize: 15, lineHeight: 1.7, marginBottom: 20 }}>
+            A long but exciting and interesting road ahead. But the nearest goal is already in sight.
+            Don't stop and go forward. Win ten times first, successfully pass the exam, and advance to
+            the Lodar 15X10 level. Good luck in your promotion on the Lodar staircase!
+          </p>
+          <p style={{ color: C.steelDim, fontSize: 12, marginBottom: 28 }}>
+            (The "Новичок" badge itself isn't wired to your profile yet — this screen is a stand-in until that's built.)
+          </p>
+          <button onClick={startFreeMode} style={{ background: C.cyan, color: C.graphite, fontWeight: 700, fontSize: 14, padding: '12px 28px', border: 'none', cursor: 'pointer' }}>Continue to free sandbox →</button>
+        </div>
+      )}
+
+      {mode === 'free' && (
+        <>
+          <div style={{ background: C.graphite2, borderBottom: `1px solid ${C.steelDim}20` }} className="px-4 md:px-6 py-3 flex items-center gap-3 flex-wrap">
+            <span style={{ color: C.steelDim, fontSize: 11, fontFamily: "'JetBrains Mono',monospace" }}>RULE HIGHLIGHTS:</span>
+            {(Object.entries(ruleToggles) as [keyof typeof ruleToggles, boolean][]).map(([k, on]) => {
+              const label = k === 'returnPath' ? 'Return Path' : k.charAt(0).toUpperCase() + k.slice(1)
+              return (
+                <button key={k} onClick={() => toggleRule(k)}
+                  style={{ border: `1px solid ${on ? RULE_COLORS[k] : C.steelDim + '40'}`, background: on ? `${RULE_COLORS[k]}20` : 'transparent', color: on ? RULE_COLORS[k] : C.steelDim, fontSize: 11, fontFamily: "'JetBrains Mono',monospace", padding: '4px 12px', transition: 'all 0.15s' }}>
+                  {label} {on ? '●' : '○'}
+                </button>
+              )
+            })}
+          </div>
+
+          <div className="max-w-7xl mx-auto px-4 py-6 grid lg:grid-cols-[1fr_300px] gap-5">
+            <div style={{ border: `1px solid ${C.steelDim}30`, background: C.graphite2 }} className="p-4">
+              <div className="overflow-x-auto">
+                <ContainerGrid filledCells={filled} rows={ROWS} showJKSeparator cellSize={30}
+                  pieces={pieces} highlightCells={highlights}
+                  onCellClick={handleCellClick}
+                  onCellHover={(r, c) => setHoverCell({ r, c })} onCellLeave={() => setHoverCell(null)}
+                  ghostCells={ghostCells} ghostValid={ghostValid} markCells={clickPoints} />
+              </div>
+              {message && <p style={{ color: C.red, fontSize: 13, marginTop: 10 }}>{message}</p>}
+            </div>
+
+            <div className="flex flex-col gap-4">
+              {selectedFig ? (
+                <div style={{ border: `1px solid ${C.cyan}40`, background: C.graphite2 }} className="p-5">
+                  <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 12 }}>SELECTED — {selectedFig.label}</p>
+                  <div style={{ background: C.graphite, border: `1px solid ${C.cyan}22`, padding: 14 }} className="flex items-center justify-center mb-4">
+                    <FigurePreview cells={orientations[rotIdx % orientations.length]} cardSize={80} color={C.cyan} cellPx={14} dots={selectedFig.dots} number={selectedFig.id} />
+                  </div>
+                  {pointsNeeded === 1 && (
+                    <div className="flex gap-2 mb-4">
+                      {[0, 1, 2, 3].slice(0, orientations.length).map(i => (
+                        <button key={i} onClick={() => setRotIdx(i)}
+                          style={{ border: `1px solid ${rotIdx % orientations.length === i ? C.cyan : C.steelDim + '50'}`, background: rotIdx % orientations.length === i ? `${C.cyan}18` : 'transparent', color: rotIdx % orientations.length === i ? C.cyan : C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, padding: '4px 10px' }}>{i * 90}°</button>
+                      ))}
+                    </div>
+                  )}
+                  <p style={{ color: C.steelDim, fontSize: 11, marginBottom: 8 }}>
+                    Click {pointsNeeded === 2 ? 'two cells (its reference dots, in order)' : 'a cell'} on the container.
+                  </p>
+                  {notation && <code style={{ color: C.deck, fontFamily: "'JetBrains Mono',monospace", fontSize: 13, display: 'block', marginBottom: 12 }}>{notation}</code>}
+                  <div className="flex gap-2">
+                    <button onClick={() => place()} disabled={clickPoints.length < pointsNeeded}
+                      style={{ background: clickPoints.length >= pointsNeeded ? C.cyan : C.steelDim, color: C.graphite, fontWeight: 700, fontSize: 12, padding: '8px 16px', border: 'none', flex: 1, cursor: clickPoints.length >= pointsNeeded ? 'pointer' : 'default' }}>Place</button>
+                    <button onClick={() => selectFigure(selectedFig)} style={{ color: C.steelDim, border: `1px solid ${C.steelDim}40`, fontSize: 12, padding: '8px 12px' }}>Reset points</button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ border: `1px solid ${C.steelDim}30`, background: C.graphite2 }} className="p-5">
+                  <p style={{ color: C.steelDim, fontSize: 13 }}>Pick a figure below to start placing.</p>
+                </div>
+              )}
+              <FigureBankPanel title="ALL 27 FIGURES — FREE PLACEMENT" panelColor={C.steel} itemColor={C.cyan}
+                onSelect={selectFigure} getStatus={() => ({ used: false, actionable: true, hint: '' })} />
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 // ── Auth Page — Light Deck bg, flip card ──────────────────────────────────────
-function AuthPage({ onAuth, setPage }: { onAuth: () => void; setPage: (p: Page) => void }) {
+function AuthPage({ onAuth, setPage, recoveryMode }: { onAuth: () => void; setPage: (p: Page) => void; recoveryMode?: boolean }) {
   const [isSignUp, setIsSignUp] = useState(false)
   const [form, setForm] = useState({ firstName: '', lastName: '', nickname: '', useNickname: false, email: '', password: '', confirm: '', agree: false })
+  const [signIn, setSignIn] = useState({ email: '', password: '' })
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [submitted, setSubmitted] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+
+  // "Forgot password?" -- request half of the flow (send the reset email).
+  const [showForgot, setShowForgot] = useState(false)
+  const [forgotEmail, setForgotEmail] = useState('')
+  const [forgotSubmitting, setForgotSubmitting] = useState(false)
+  const [forgotSent, setForgotSent] = useState(false)
+  const [forgotError, setForgotError] = useState('')
+
+  // Recovery mode -- the OTHER half: rendered instead of the normal sign-in/up form when
+  // the app was loaded from the password-reset email link (App() detects this via the
+  // URL's `type=recovery` and passes recoveryMode=true; Supabase has already exchanged
+  // the link for a temporary session by this point, so this just needs a new password).
+  const [newPassword, setNewPassword] = useState('')
+  const [newPasswordConfirm, setNewPasswordConfirm] = useState('')
+  const [recoverySubmitting, setRecoverySubmitting] = useState(false)
+  const [recoveryError, setRecoveryError] = useState('')
+  const [recoveryDone, setRecoveryDone] = useState(false)
 
   const upd = (k: string, v: string | boolean) => setForm(f => ({ ...f, [k]: v }))
+  const updSignIn = (k: 'email' | 'password', v: string) => setSignIn(s => ({ ...s, [k]: v }))
+
+  const handleForgotSubmit = async () => {
+    if (forgotSubmitting) return
+    if (!forgotEmail.includes('@')) { setForgotError('Enter a valid email address'); return }
+    setForgotSubmitting(true)
+    setForgotError('')
+    const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, { redirectTo: window.location.origin })
+    setForgotSubmitting(false)
+    if (error) { setForgotError(error.message); return }
+    setForgotSent(true)
+  }
+
+  const handleRecoverySubmit = async () => {
+    if (recoverySubmitting) return
+    if (newPassword.length < 8) { setRecoveryError('Minimum 8 characters'); return }
+    if (newPassword !== newPasswordConfirm) { setRecoveryError('Passwords do not match'); return }
+    setRecoverySubmitting(true)
+    setRecoveryError('')
+    const { error } = await supabase.auth.updateUser({ password: newPassword })
+    setRecoverySubmitting(false)
+    if (error) { setRecoveryError(error.message); return }
+    setRecoveryDone(true)
+  }
 
   const validateSignUp = () => {
     const e: Record<string, string> = {}
@@ -1535,56 +2578,181 @@ function AuthPage({ onAuth, setPage }: { onAuth: () => void; setPage: (p: Page) 
     return e
   }
 
-  const handleSubmit = () => {
+  const validateSignIn = () => {
+    const e: Record<string, string> = {}
+    if (!signIn.email.includes('@')) e.signInEmail = 'Enter a valid email address'
+    if (!signIn.password) e.signInPassword = 'Required'
+    return e
+  }
+
+  // Registration flow per PuzzleStow_MVP_Site_Spec_Addendum_Registration.docx §5 --
+  // signUp() metadata is read server-side by the public.handle_new_user() trigger
+  // (supabase/migrations/20260908101531_create_users_table.sql,
+  // 20260908102500_add_nickname_to_users.sql) to create the public.users row.
+  const handleSubmit = async () => {
+    if (submitting) return
     if (isSignUp) {
       const e = validateSignUp()
       setErrors(e)
-      if (Object.keys(e).length === 0) setSubmitted(true)
+      if (Object.keys(e).length > 0) return
+      setSubmitting(true)
+      const { error } = await supabase.auth.signUp({
+        email: form.email,
+        password: form.password,
+        options: {
+          data: {
+            name: `${form.firstName.trim()} ${form.lastName.trim()}`.trim(),
+            nickname: form.nickname.trim() || null,
+            use_nickname: form.useNickname,
+            agreed_to_terms_at: new Date().toISOString(),
+          },
+        },
+      })
+      setSubmitting(false)
+      if (error) {
+        setErrors({ email: /already/i.test(error.message) ? 'This email is already used' : error.message })
+        return
+      }
+      setSubmitted(true)
     } else {
+      const e = validateSignIn()
+      setErrors(e)
+      if (Object.keys(e).length > 0) return
+      setSubmitting(true)
+      const { error } = await supabase.auth.signInWithPassword({ email: signIn.email, password: signIn.password })
+      setSubmitting(false)
+      if (error) {
+        setErrors({ signInPassword: 'Incorrect email or password' })
+        return
+      }
       onAuth()
       setPage('home')
     }
   }
 
+  if (recoveryMode) {
+    if (recoveryDone) {
+      return (
+        <div style={{ background: C.graphite, minHeight: '100vh' }} className="flex items-center justify-center px-4">
+          <div style={{ background: C.graphite2, border: `1px solid ${C.cyan}28`, padding: 48, maxWidth: 420, width: '100%', textAlign: 'center' }}>
+            <div style={{ background: C.cyan, width: 48, height: 48, margin: '0 auto 20px' }} className="flex items-center justify-center">
+              <svg width={24} height={24} fill="none" stroke={C.graphite} strokeWidth={2.5}><polyline points="4,12 10,18 20,6" /></svg>
+            </div>
+            <h2 style={{ color: C.deck, fontSize: 22, fontWeight: 700, marginBottom: 12 }}>Password updated</h2>
+            <p style={{ color: C.steel, fontSize: 14, lineHeight: 1.7, marginBottom: 28 }}>
+              Your new password is set. You're already signed in with it.
+            </p>
+            <button onClick={() => setPage('home')} style={{ background: C.blue, color: C.deck, fontSize: 14, fontWeight: 600, padding: '12px 24px', border: 'none', cursor: 'pointer' }}>Continue</button>
+          </div>
+        </div>
+      )
+    }
+    return (
+      <div style={{ background: C.graphite, minHeight: '100vh' }} className="flex items-center justify-center px-4">
+        <div style={{ background: C.graphite2, border: `1px solid ${C.cyan}28`, padding: 40, maxWidth: 420, width: '100%' }}>
+          <h2 style={{ color: C.deck, fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Set a new password</h2>
+          <p style={{ color: C.steel, fontSize: 13, lineHeight: 1.6, marginBottom: 24 }}>Choose a new password for your account.</p>
+          <div className="flex flex-col gap-4">
+            <div>
+              <label style={{ color: C.steel, fontSize: 12, fontWeight: 500, display: 'block', marginBottom: 5 }}>New password</label>
+              <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="••••••••"
+                style={{ border: `1px solid ${C.steelDim}`, color: C.deck, fontSize: 14, padding: '10px 12px', width: '100%', outline: 'none', fontFamily: 'Inter, sans-serif', background: C.graphite }} />
+            </div>
+            <div>
+              <label style={{ color: C.steel, fontSize: 12, fontWeight: 500, display: 'block', marginBottom: 5 }}>Confirm new password</label>
+              <input type="password" value={newPasswordConfirm} onChange={e => setNewPasswordConfirm(e.target.value)} placeholder="••••••••"
+                style={{ border: `1px solid ${C.steelDim}`, color: C.deck, fontSize: 14, padding: '10px 12px', width: '100%', outline: 'none', fontFamily: 'Inter, sans-serif', background: C.graphite }} />
+            </div>
+            {recoveryError && <p style={{ color: C.red, fontSize: 12 }}>{recoveryError}</p>}
+            <button onClick={handleRecoverySubmit} disabled={recoverySubmitting}
+              style={{ background: C.blue, color: C.deck, fontSize: 14, fontWeight: 600, padding: '12px 0', width: '100%', border: 'none', cursor: recoverySubmitting ? 'default' : 'pointer', opacity: recoverySubmitting ? 0.6 : 1 }}>
+              {recoverySubmitting ? 'Saving…' : 'Save new password'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (showForgot) {
+    if (forgotSent) {
+      return (
+        <div style={{ background: C.graphite, minHeight: '100vh' }} className="flex items-center justify-center px-4">
+          <div style={{ background: C.graphite2, border: `1px solid ${C.cyan}28`, padding: 48, maxWidth: 420, width: '100%', textAlign: 'center' }}>
+            <div style={{ background: C.cyan, width: 48, height: 48, margin: '0 auto 20px' }} className="flex items-center justify-center">
+              <svg width={24} height={24} fill="none" stroke={C.graphite} strokeWidth={2.5}><polyline points="4,12 10,18 20,6" /></svg>
+            </div>
+            <h2 style={{ color: C.deck, fontSize: 22, fontWeight: 700, marginBottom: 12 }}>Check your email</h2>
+            <p style={{ color: C.steel, fontSize: 14, lineHeight: 1.7, marginBottom: 28 }}>
+              We sent a password reset link to <strong>{forgotEmail}</strong>. Follow it to choose a new password.
+            </p>
+            <button onClick={() => setShowForgot(false)} style={{ color: C.cyan, fontSize: 13 }}>Back to sign in</button>
+          </div>
+        </div>
+      )
+    }
+    return (
+      <div style={{ background: C.graphite, minHeight: '100vh' }} className="flex items-center justify-center px-4">
+        <div style={{ background: C.graphite2, border: `1px solid ${C.cyan}28`, padding: 40, maxWidth: 420, width: '100%' }}>
+          <h2 style={{ color: C.deck, fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Reset your password</h2>
+          <p style={{ color: C.steel, fontSize: 13, lineHeight: 1.6, marginBottom: 24 }}>Enter your email and we'll send you a reset link.</p>
+          <div className="flex flex-col gap-4">
+            <div>
+              <label style={{ color: C.steel, fontSize: 12, fontWeight: 500, display: 'block', marginBottom: 5 }}>Email</label>
+              <input type="email" value={forgotEmail} onChange={e => setForgotEmail(e.target.value)} placeholder="you@example.com"
+                style={{ border: `1px solid ${C.steelDim}`, color: C.deck, fontSize: 14, padding: '10px 12px', width: '100%', outline: 'none', fontFamily: 'Inter, sans-serif', background: C.graphite }} />
+            </div>
+            {forgotError && <p style={{ color: C.red, fontSize: 12 }}>{forgotError}</p>}
+            <button onClick={handleForgotSubmit} disabled={forgotSubmitting}
+              style={{ background: C.blue, color: C.deck, fontSize: 14, fontWeight: 600, padding: '12px 0', width: '100%', border: 'none', cursor: forgotSubmitting ? 'default' : 'pointer', opacity: forgotSubmitting ? 0.6 : 1 }}>
+              {forgotSubmitting ? 'Sending…' : 'Send reset link'}
+            </button>
+            <button onClick={() => setShowForgot(false)} style={{ color: C.steelDim, fontSize: 13 }}>Back to sign in</button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (submitted) {
     return (
-      <div style={{ background: C.deck, minHeight: '100vh' }} className="flex items-center justify-center px-4">
-        <div style={{ background: '#fff', boxShadow: '0 8px 40px rgba(28,31,38,0.14)', padding: 48, maxWidth: 420, width: '100%', textAlign: 'center' }}>
+      <div style={{ background: C.graphite, minHeight: '100vh' }} className="flex items-center justify-center px-4">
+        <div style={{ background: C.graphite2, border: `1px solid ${C.cyan}28`, padding: 48, maxWidth: 420, width: '100%', textAlign: 'center' }}>
           <div style={{ background: C.cyan, width: 48, height: 48, margin: '0 auto 20px' }} className="flex items-center justify-center">
             <svg width={24} height={24} fill="none" stroke={C.graphite} strokeWidth={2.5}><polyline points="4,12 10,18 20,6" /></svg>
           </div>
-          <h2 style={{ color: C.graphite, fontSize: 22, fontWeight: 700, marginBottom: 12 }}>Check your email</h2>
-          <p style={{ color: '#555', fontSize: 14, lineHeight: 1.7, marginBottom: 28 }}>
+          <h2 style={{ color: C.deck, fontSize: 22, fontWeight: 700, marginBottom: 12 }}>Check your email</h2>
+          <p style={{ color: C.steel, fontSize: 14, lineHeight: 1.7, marginBottom: 28 }}>
             We sent a confirmation link to <strong>{form.email}</strong>. Follow it to activate your account.
           </p>
-          <button style={{ color: '#888', fontSize: 13, textDecoration: 'underline' }}>Resend (available after 60s)</button>
+          <button style={{ color: C.steelDim, fontSize: 13, textDecoration: 'underline' }}>Resend (available after 60s)</button>
         </div>
       </div>
     )
   }
 
   const inp = (err?: string): React.CSSProperties => ({
-    border: `1px solid ${err ? C.red : '#d0d5de'}`, color: C.graphite, fontSize: 14,
+    border: `1px solid ${err ? C.red : C.steelDim}`, color: C.deck, fontSize: 14,
     padding: '10px 12px', width: '100%', outline: 'none', fontFamily: 'Inter, sans-serif',
-    background: '#fff', transition: 'border-color 0.15s', borderRadius: 0,
+    background: C.graphite, transition: 'border-color 0.15s', borderRadius: 0,
   })
-  const lbl: React.CSSProperties = { color: '#444', fontSize: 12, fontWeight: 500, display: 'block', marginBottom: 5 }
+  const lbl: React.CSSProperties = { color: C.steel, fontSize: 12, fontWeight: 500, display: 'block', marginBottom: 5 }
   const err: React.CSSProperties = { color: C.red, fontSize: 12, marginTop: 4 }
-  const primaryBtn: React.CSSProperties = { background: C.blue, color: '#fff', fontSize: 14, fontWeight: 600, padding: '12px 0', width: '100%', border: 'none', cursor: 'pointer' }
+  const primaryBtn: React.CSSProperties = { background: C.blue, color: C.deck, fontSize: 14, fontWeight: 600, padding: '12px 0', width: '100%', border: 'none', cursor: 'pointer' }
 
   const Checkbox = ({ checked, onChange }: { checked: boolean; onChange: () => void }) => (
-    <div onClick={onChange} style={{ width: 18, height: 18, border: `1.5px solid ${checked ? C.blue : '#ccc'}`, background: checked ? C.blue : '#fff', flexShrink: 0, marginTop: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.15s' }}>
-      {checked && <svg width={10} height={10} viewBox="0 0 10 10" fill="none" stroke="#fff" strokeWidth={2.5}><polyline points="1.5,5 4,7.5 8.5,2.5" /></svg>}
+    <div onClick={onChange} style={{ width: 18, height: 18, border: `1.5px solid ${checked ? C.cyan : C.steelDim}`, background: checked ? C.cyan : C.graphite, flexShrink: 0, marginTop: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.15s' }}>
+      {checked && <svg width={10} height={10} viewBox="0 0 10 10" fill="none" stroke={C.graphite} strokeWidth={2.5}><polyline points="1.5,5 4,7.5 8.5,2.5" /></svg>}
     </div>
   )
 
   return (
-    <div style={{ background: C.deck, minHeight: '100vh', paddingTop: '3.5rem' }} className="flex flex-col items-center justify-center px-4 py-12">
+    <div style={{ background: C.graphite, minHeight: '100vh', paddingTop: '3.5rem' }} className="flex flex-col items-center justify-center px-4 py-12">
       <button onClick={() => setPage('home')} className="flex items-center gap-2 mb-8">
         <div style={{ background: C.cyan }} className="w-8 h-8 flex items-center justify-center">
           <GridIcon size={16} color={C.graphite} />
         </div>
-        <span style={{ fontFamily: "'JetBrains Mono',monospace", color: C.graphite, letterSpacing: '0.06em', fontSize: 14, fontWeight: 600 }}>PUZZLESTOW</span>
+        <span style={{ fontFamily: "'JetBrains Mono',monospace", color: C.deck, letterSpacing: '0.06em', fontSize: 14, fontWeight: 600 }}>PUZZLESTOW</span>
       </button>
 
       <div style={{ perspective: '1200px', width: '100%', maxWidth: 440 }}>
@@ -1592,34 +2760,36 @@ function AuthPage({ onAuth, setPage }: { onAuth: () => void; setPage: (p: Page) 
 
           {/* Sign In — front */}
           <div style={{ position: 'absolute', inset: 0, backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}>
-            <div style={{ background: '#fff', boxShadow: '0 4px 32px rgba(28,31,38,0.10)', padding: '36px 36px 32px' }}>
-              <h2 style={{ color: C.graphite, fontSize: 22, fontWeight: 700, marginBottom: 6 }}>Sign In</h2>
-              <p style={{ color: '#666', fontSize: 13, marginBottom: 24 }}>
+            <div style={{ background: C.graphite2, border: `1px solid ${C.cyan}28`, padding: '36px 36px 32px' }}>
+              <h2 style={{ color: C.deck, fontSize: 22, fontWeight: 700, marginBottom: 6 }}>Sign In</h2>
+              <p style={{ color: C.steel, fontSize: 13, marginBottom: 24 }}>
                 New here?{' '}
-                <button onClick={() => setIsSignUp(true)} style={{ color: C.blue, fontWeight: 600, textDecoration: 'underline' }}>Create an account</button>
+                <button onClick={() => setIsSignUp(true)} style={{ color: C.cyan, fontWeight: 600, textDecoration: 'underline' }}>Create an account</button>
               </p>
               <div className="flex flex-col gap-4">
                 <div>
                   <label style={lbl}>Email</label>
-                  <input type="email" placeholder="you@example.com" style={inp()} />
+                  <input type="email" value={signIn.email} onChange={e => updSignIn('email', e.target.value)} placeholder="you@example.com" style={inp(errors.signInEmail)} />
+                  {errors.signInEmail && <p style={err}>{errors.signInEmail}</p>}
                 </div>
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label style={lbl}>Password</label>
-                    <button style={{ color: C.blue, fontSize: 12 }}>Forgot password?</button>
+                    <button onClick={() => { setForgotEmail(signIn.email); setForgotError(''); setForgotSent(false); setShowForgot(true) }} style={{ color: C.cyan, fontSize: 12 }}>Forgot password?</button>
                   </div>
-                  <input type="password" placeholder="••••••••" style={inp()} />
+                  <input type="password" value={signIn.password} onChange={e => updSignIn('password', e.target.value)} placeholder="••••••••" style={inp(errors.signInPassword)} />
+                  {errors.signInPassword && <p style={err}>{errors.signInPassword}</p>}
                 </div>
-                <button onClick={handleSubmit} style={primaryBtn} onMouseOver={e => (e.currentTarget.style.filter = 'brightness(0.9)')} onMouseOut={e => (e.currentTarget.style.filter = '')}>
-                  Sign In
+                <button onClick={handleSubmit} disabled={submitting} style={{ ...primaryBtn, opacity: submitting ? 0.6 : 1, cursor: submitting ? 'default' : 'pointer' }} onMouseOver={e => (e.currentTarget.style.filter = 'brightness(0.9)')} onMouseOut={e => (e.currentTarget.style.filter = '')}>
+                  {submitting ? 'Signing in…' : 'Sign In'}
                 </button>
-                <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 16 }}>
-                  <button style={{ border: `1px solid ${C.blue}50`, color: C.blue, background: `${C.blue}08`, fontSize: 13, fontWeight: 500, padding: '10px 0', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                <div style={{ borderTop: `1px solid ${C.steelDim}40`, paddingTop: 16 }}>
+                  <button style={{ border: `1px solid ${C.cyan}50`, color: C.cyan, background: `${C.cyan}10`, fontSize: 13, fontWeight: 500, padding: '10px 0', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                     <TelegramIcon size={16} />
                     Continue with Telegram
-                    <span style={{ color: '#999', fontSize: 11 }}>(optional)</span>
+                    <span style={{ color: C.steelDim, fontSize: 11 }}>(optional)</span>
                   </button>
-                  <p style={{ color: '#999', fontSize: 11, marginTop: 6, textAlign: 'center' }}>Telegram login links your account for quick access from the WebView. Email login is the primary method.</p>
+                  <p style={{ color: C.steelDim, fontSize: 11, marginTop: 6, textAlign: 'center' }}>Telegram login links your account for quick access from the WebView. Email login is the primary method.</p>
                 </div>
               </div>
             </div>
@@ -1627,11 +2797,11 @@ function AuthPage({ onAuth, setPage }: { onAuth: () => void; setPage: (p: Page) 
 
           {/* Sign Up — back */}
           <div style={{ position: 'absolute', inset: 0, backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', transform: 'rotateY(180deg)', overflowY: 'auto' }}>
-            <div style={{ background: '#fff', boxShadow: '0 4px 32px rgba(28,31,38,0.10)', padding: '36px 36px 32px' }}>
-              <h2 style={{ color: C.graphite, fontSize: 22, fontWeight: 700, marginBottom: 6 }}>Create Account</h2>
-              <p style={{ color: '#666', fontSize: 13, marginBottom: 24 }}>
+            <div style={{ background: C.graphite2, border: `1px solid ${C.cyan}28`, padding: '36px 36px 32px' }}>
+              <h2 style={{ color: C.deck, fontSize: 22, fontWeight: 700, marginBottom: 6 }}>Create Account</h2>
+              <p style={{ color: C.steel, fontSize: 13, marginBottom: 24 }}>
                 Already registered?{' '}
-                <button onClick={() => { setIsSignUp(false); setErrors({}) }} style={{ color: C.blue, fontWeight: 600, textDecoration: 'underline' }}>Sign in</button>
+                <button onClick={() => { setIsSignUp(false); setErrors({}) }} style={{ color: C.cyan, fontWeight: 600, textDecoration: 'underline' }}>Sign in</button>
               </p>
               <div className="flex flex-col gap-4">
                 <div className="grid grid-cols-2 gap-3">
@@ -1652,8 +2822,8 @@ function AuthPage({ onAuth, setPage }: { onAuth: () => void; setPage: (p: Page) 
                 <label className="flex items-start gap-3 cursor-pointer">
                   <Checkbox checked={form.useNickname} onChange={() => upd('useNickname', !form.useNickname)} />
                   <div>
-                    <span style={{ color: C.graphite, fontSize: 13, fontWeight: 500 }}>Use nickname on PuzzleStow</span>
-                    <p style={{ color: '#888', fontSize: 11, lineHeight: 1.5, marginTop: 2 }}>Your nickname replaces your display name on leaderboards, match history, and badges — in PuzzleStow only, not on PairSec service bookings.</p>
+                    <span style={{ color: C.deck, fontSize: 13, fontWeight: 500 }}>Use nickname on PuzzleStow</span>
+                    <p style={{ color: C.steelDim, fontSize: 11, lineHeight: 1.5, marginTop: 2 }}>Your nickname replaces your display name on leaderboards, match history, and badges — in PuzzleStow only, not on PairSec service bookings.</p>
                   </div>
                 </label>
                 <div>
@@ -1673,11 +2843,11 @@ function AuthPage({ onAuth, setPage }: { onAuth: () => void; setPage: (p: Page) 
                 </div>
                 <label className="flex items-start gap-3 cursor-pointer">
                   <Checkbox checked={form.agree} onChange={() => upd('agree', !form.agree)} />
-                  <span style={{ color: errors.agree ? C.red : '#555', fontSize: 13 }}>I have read and agree to the game rules and terms of use</span>
+                  <span style={{ color: errors.agree ? C.red : C.steel, fontSize: 13 }}>I have read and agree to the game rules and terms of use</span>
                 </label>
                 {errors.agree && <p style={err}>{errors.agree}</p>}
-                <button onClick={handleSubmit} style={primaryBtn} onMouseOver={e => (e.currentTarget.style.filter = 'brightness(0.9)')} onMouseOut={e => (e.currentTarget.style.filter = '')}>
-                  Create Account
+                <button onClick={handleSubmit} disabled={submitting} style={{ ...primaryBtn, opacity: submitting ? 0.6 : 1, cursor: submitting ? 'default' : 'pointer' }} onMouseOver={e => (e.currentTarget.style.filter = 'brightness(0.9)')} onMouseOut={e => (e.currentTarget.style.filter = '')}>
+                  {submitting ? 'Creating account…' : 'Create Account'}
                 </button>
               </div>
             </div>
@@ -1689,6 +2859,197 @@ function AuthPage({ onAuth, setPage }: { onAuth: () => void; setPage: (p: Page) 
 }
 
 // ── Print & Play Page ─────────────────────────────────────────────────────────
+// Client-side PDF exports for the three download buttons below (Sergey, 2026-09-10) —
+// same jsPDF pattern already proven in exportGameReportPdf() (devtest page). Geometry
+// mirrors ContainerGrid/FigurePreview: row 0 = top = last letter of ROW_LABELS, columns
+// 0–14 labeled along the bottom, entry/exit always at bottom-left (row `rows-1`, col 0).
+const PP_BLUE: [number, number, number] = [31, 79, 130]
+const PP_CYAN: [number, number, number] = [31, 167, 163]
+const PP_GRAPHITE: [number, number, number] = [28, 31, 38]
+const PP_STEEL: [number, number, number] = [120, 128, 143]
+
+function drawContainerGridPdf(doc: jsPDF, x0: number, y0: number, cellPt: number, rows: number, showJKSeparator: boolean) {
+  const COLS = 15
+  const gridW = COLS * cellPt
+  const gridH = rows * cellPt
+
+  doc.setDrawColor(...PP_GRAPHITE)
+  doc.setLineWidth(0.5)
+  for (let c = 0; c <= COLS; c++) doc.line(x0 + c * cellPt, y0, x0 + c * cellPt, y0 + gridH)
+  for (let r = 0; r <= rows; r++) doc.line(x0, y0 + r * cellPt, x0 + gridW, y0 + r * cellPt)
+  doc.setLineWidth(1.1)
+  doc.rect(x0, y0, gridW, gridH)
+
+  // Entry/exit A0 — bottom-left cell, cyan per brand.
+  const entryR = rows - 1
+  doc.setDrawColor(...PP_CYAN)
+  doc.setLineWidth(1.1)
+  doc.rect(x0, y0 + entryR * cellPt, cellPt, cellPt, 'S')
+  doc.setFillColor(...PP_CYAN)
+  doc.circle(x0 + cellPt / 2, y0 + entryR * cellPt + cellPt / 2, Math.max(1.2, cellPt * 0.07), 'F')
+
+  // J/K separator — dashed cyan line one cell below the top edge, 15×11 only (matches
+  // ContainerGrid's showJKSeparator && rows === 11 line).
+  if (showJKSeparator && rows === 11) {
+    doc.setDrawColor(...PP_CYAN)
+    doc.setLineWidth(1.3)
+    doc.setLineDashPattern([3, 2], 0)
+    doc.line(x0, y0 + cellPt, x0 + gridW, y0 + cellPt)
+    doc.setLineDashPattern([], 0)
+  }
+
+  const ROW_LABELS_PP = 'ABCDEFGHIJK'
+  doc.setFont('courier', 'bold')
+  doc.setFontSize(Math.max(6, cellPt * 0.4))
+  doc.setTextColor(...PP_STEEL)
+  for (let r = 0; r < rows; r++) {
+    doc.text(ROW_LABELS_PP[rows - 1 - r], x0 + gridW + 6, y0 + r * cellPt + cellPt / 2 + 3)
+  }
+  doc.setFontSize(Math.max(6, cellPt * 0.36))
+  for (let c = 0; c < COLS; c++) {
+    doc.text(String(c), x0 + c * cellPt + cellPt / 2, y0 + gridH + 12, { align: 'center' })
+  }
+}
+
+function exportContainerTemplatePdf(rows: 10 | 11, showJKSeparator: boolean, name: string) {
+  const doc = new jsPDF({ unit: 'pt', format: 'a4' })
+  const margin = 40
+  const pageW = doc.internal.pageSize.getWidth()
+
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(18); doc.setTextColor(...PP_BLUE)
+  doc.text('PUZZLESTOW', margin, 50)
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(12); doc.setTextColor(...PP_GRAPHITE)
+  doc.text(`Print & Play — Container Template (${name})`, margin, 68)
+  doc.setFontSize(9); doc.setTextColor(...PP_STEEL)
+  doc.text('Columns 0–14 · rows lettered on the right · entry/exit at A0 (bottom-left, marked).', margin, 82)
+
+  const cellPt = Math.min((pageW - 2 * margin) / 15, 28)
+  drawContainerGridPdf(doc, margin, 108, cellPt, rows, showJKSeparator)
+
+  const footerY = 108 + rows * cellPt + 30
+  doc.setFontSize(9); doc.setTextColor(...PP_STEEL)
+  doc.text('PuzzleStow — Print & Play · puzzlestow.com', margin, footerY)
+
+  doc.save(`PuzzleStow_Container_15x${rows}_${showJKSeparator ? 'Beginner' : 'Standard'}.pdf`)
+}
+
+function drawFigureCardPdf(doc: jsPDF, fig: Figure, x: number, y: number, cardSize: number) {
+  const cells = fig.cells
+  const rowsArr = cells.map(([r]) => r), colsArr = cells.map(([, c]) => c)
+  const minR = Math.min(...rowsArr), maxR = Math.max(...rowsArr)
+  const minC = Math.min(...colsArr), maxC = Math.max(...colsArr)
+  const numR = maxR - minR + 1, numC = maxC - minC + 1
+  const cellPt = Math.min(cardSize / Math.max(numR, numC), 15)
+  const figW = numC * cellPt, figH = numR * cellPt
+  const ox = x + (cardSize - figW) / 2
+  const oy = y + (cardSize - figH) / 2
+
+  doc.setDrawColor(...PP_CYAN)
+  doc.setLineWidth(0.6)
+  cells.forEach(([r, c]) => {
+    doc.rect(ox + (c - minC) * cellPt, oy + (r - minR) * cellPt, cellPt, cellPt, 'S')
+  })
+
+  const dotSet = new Set(fig.dots)
+  doc.setFillColor(...PP_CYAN)
+  fig.dots.forEach(idx => {
+    const [r, c] = cells[idx]
+    doc.circle(ox + (c - minC) * cellPt + cellPt / 2, oy + (r - minR) * cellPt + cellPt / 2, Math.max(0.8, cellPt * 0.12), 'F')
+  })
+
+  let labelIdx = cells.findIndex((_, i) => !dotSet.has(i))
+  if (labelIdx < 0) labelIdx = 0
+  const [lr, lc] = cells[labelIdx]
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(Math.max(5.5, Math.min(cellPt * 0.55, 8)))
+  doc.setTextColor(...PP_GRAPHITE)
+  doc.text(String(fig.id), ox + (lc - minC) * cellPt + cellPt / 2, oy + (lr - minR) * cellPt + cellPt / 2 + 2, { align: 'center' })
+
+  doc.setFont('courier', 'normal')
+  doc.setFontSize(6.5)
+  doc.setTextColor(...PP_STEEL)
+  doc.text(`${fig.label} — ${fig.name}`, x + cardSize / 2, y + cardSize + 9, { align: 'center', maxWidth: cardSize })
+}
+
+function drawFigureReferenceSheet(doc: jsPDF, startY: number) {
+  const margin = 40
+  const pageW = doc.internal.pageSize.getWidth()
+  const pageH = doc.internal.pageSize.getHeight()
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(...PP_BLUE)
+  doc.text('Figure Reference — All 27 Figures', margin, startY)
+
+  const cols = 6
+  const gap = 10
+  const cardSize = (pageW - 2 * margin - (cols - 1) * gap) / cols
+  const rowH = cardSize + 24
+  let x = margin, y = startY + 26, col = 0
+
+  FIGURES.forEach(fig => {
+    if (y + cardSize + 20 > pageH - 40) {
+      doc.addPage()
+      y = 50
+      x = margin
+      col = 0
+    }
+    drawFigureCardPdf(doc, fig, x, y, cardSize)
+    col++
+    if (col >= cols) { col = 0; x = margin; y += rowH } else { x += cardSize + gap }
+  })
+}
+
+function exportCompletePackPdf() {
+  const doc = new jsPDF({ unit: 'pt', format: 'a4' })
+  const margin = 40
+  const pageW = doc.internal.pageSize.getWidth()
+
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(20); doc.setTextColor(...PP_BLUE)
+  doc.text('PUZZLESTOW', margin, 55)
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(13); doc.setTextColor(...PP_GRAPHITE)
+  doc.text('Print & Play — Complete Pack', margin, 75)
+  doc.setFont('helvetica', 'italic'); doc.setFontSize(11); doc.setTextColor(...PP_CYAN)
+  doc.text('"All you need is a sheet of grid paper and a pen."', margin, 95)
+
+  let y = 125
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(...PP_GRAPHITE)
+  doc.text('Rules Summary', margin, y)
+  y += 20
+  const rulesSummary: [string, string][] = [
+    ['Support', 'No piece may float — every cell rests on row A or on an already-placed piece.'],
+    ['Steps (≤ 3)', 'Height difference between adjacent columns must not exceed 3 cells.'],
+    ['Overhang', 'More than 50% of a piece unsupported is disallowed by default (bilateral fair-play exception aside).'],
+    ['Return Path', 'After placing a piece, a passable path back to exit A0 must remain open.'],
+    ['Row/Column Closure', 'Win by closing 5 rows/columns combined, or by your opponent having no legal placement.'],
+  ]
+  doc.setFontSize(9.5)
+  rulesSummary.forEach(([title, text]) => {
+    doc.setFont('helvetica', 'bold'); doc.setTextColor(...PP_BLUE)
+    doc.text(title + ':', margin, y)
+    doc.setFont('helvetica', 'normal'); doc.setTextColor(...PP_GRAPHITE)
+    const lines = doc.splitTextToSize(text, pageW - 2 * margin - 90)
+    doc.text(lines, margin + 90, y)
+    y += 13 * Math.max(1, lines.length) + 5
+  })
+  y += 8
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...PP_GRAPHITE)
+  const notationLine = doc.splitTextToSize('Move notation: [figureId][col1][row1][col2][row2] — e.g. F10 at cols 1/2, rows A/C → 10A1C2', pageW - 2 * margin)
+  doc.text(notationLine, margin, y)
+
+  doc.addPage()
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(...PP_GRAPHITE)
+  doc.text('Container Template — 15×10 Standard', margin, 50)
+  drawContainerGridPdf(doc, margin, 78, Math.min((pageW - 2 * margin) / 15, 28), 10, false)
+
+  doc.addPage()
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(...PP_GRAPHITE)
+  doc.text('Container Template — 15×11 Beginner', margin, 50)
+  drawContainerGridPdf(doc, margin, 78, Math.min((pageW - 2 * margin) / 15, 28), 11, true)
+
+  doc.addPage()
+  drawFigureReferenceSheet(doc, 50)
+
+  doc.save('PuzzleStow_PrintPlay_Complete_Pack.pdf')
+}
+
 function PrintPlayPage() {
   return (
     <div style={{ background: C.graphite, minHeight: '100vh', paddingTop: '3.5rem' }}>
@@ -1732,7 +3093,8 @@ function PrintPlayPage() {
               <div className="overflow-x-auto mb-4">
                 <ContainerGrid filledCells={new Set()} cellSize={15} rows={t.rows} showJKSeparator={t.sep} />
               </div>
-              <button style={{ background: t.color, color: t.color === C.steel ? C.graphite : C.graphite, fontWeight: 600, fontSize: 13, padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button onClick={() => exportContainerTemplatePdf(t.rows, t.sep, t.name)}
+                style={{ background: t.color, color: t.color === C.steel ? C.graphite : C.graphite, fontWeight: 600, fontSize: 13, padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', border: 'none' }}>
                 <svg width={14} height={14} fill="none" stroke="currentColor" strokeWidth={2}><path d="M7 2v8M3 7l4 4 4-4M2 11h10v2H2z"/></svg>
                 Download PDF — {t.name}
               </button>
@@ -1753,7 +3115,8 @@ function PrintPlayPage() {
               </div>
             ))}
           </div>
-          <button style={{ background: C.blue, color: C.deck, fontWeight: 600, fontSize: 13, padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button onClick={exportCompletePackPdf}
+            style={{ background: C.blue, color: C.deck, fontWeight: 600, fontSize: 13, padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', border: 'none' }}>
             <svg width={14} height={14} fill="none" stroke="currentColor" strokeWidth={2}><path d="M7 2v8M3 7l4 4 4-4M2 11h10v2H2z"/></svg>
             Download Complete Pack (Rules + Both Templates + Figures)
           </button>
@@ -1764,13 +3127,106 @@ function PrintPlayPage() {
 }
 
 // ── Profile Page ──────────────────────────────────────────────────────────────
-function ProfilePage() {
-  const [displayName, setDisplayName] = useState('Aleksei Morozov')
-  const [nickname, setNickname] = useState('lodar_ax')
+function ProfilePage({ session, profile, onProfileUpdated, profileLoading, profileError, onRetryProfile }: { session: Session | null; profile: PuzzleStowProfile | null; onProfileUpdated: (p: PuzzleStowProfile) => void; profileLoading?: boolean; profileError?: string | null; onRetryProfile?: () => void }) {
+  const [displayName, setDisplayName] = useState('')
+  const [nickname, setNickname] = useState('')
   const [useNickname, setUseNickname] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
+  const [avatarUploading, setAvatarUploading] = useState(false)
+  const [avatarError, setAvatarError] = useState<string | null>(null)
+  const avatarInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!profile) return
+    setDisplayName(profile.name)
+    setNickname(profile.nickname ?? '')
+    setUseNickname(profile.use_nickname)
+  }, [profile])
+
+  // Avatar is stored as a bytea hex string (see supabaseClient.ts) -- rebuild a
+  // displayable object URL whenever it changes, and revoke the previous one so we
+  // don't leak blob: URLs as the user swaps avatars across a session.
+  useEffect(() => {
+    if (!profile?.avatar) { setAvatarUrl(null); return }
+    const url = byteaHexToObjectUrl(profile.avatar, profile.avatar_content_type || 'image/jpeg')
+    setAvatarUrl(url)
+    return () => URL.revokeObjectURL(url)
+  }, [profile?.avatar, profile?.avatar_content_type])
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file || !session) return
+    setAvatarUploading(true)
+    setAvatarError(null)
+    try {
+      const { blob, contentType } = await resizeAvatarFile(file)
+      const hex = await blobToByteaHex(blob)
+      const { data, error } = await supabase.from('users')
+        .update({ avatar: hex, avatar_content_type: contentType })
+        .eq('id', session.user.id)
+        .select()
+        .single()
+      if (error) throw new Error(error.message)
+      if (data) onProfileUpdated(data as PuzzleStowProfile)
+    } catch (err) {
+      setAvatarError(err instanceof Error ? err.message : 'Could not update avatar')
+    } finally {
+      setAvatarUploading(false)
+    }
+  }
+
   const shownAs = useNickname ? nickname : displayName
 
+  // Real qualification tier from the DB, not the old hardcoded "MidLod" placeholder --
+  // falls back to UnderLodar (TIERS[0], also the DB column's own default) while the
+  // profile is still loading or has no recognized value.
+  const qualTier = TIERS.find(t => t.name === profile?.game_qualification) ?? TIERS[0]
+
+  const handleSave = async () => {
+    if (!session || saving) return
+    setSaving(true)
+    setSaveError(null)
+    const { data, error } = await supabase.from('users')
+      .update({ name: displayName, nickname: nickname.trim() || null, use_nickname: useNickname })
+      .eq('id', session.user.id)
+      .select()
+      .single()
+    setSaving(false)
+    if (error) { setSaveError(error.message); return }
+    if (data) onProfileUpdated(data as PuzzleStowProfile)
+  }
+
+  const handleCancel = () => {
+    if (!profile) return
+    setDisplayName(profile.name)
+    setNickname(profile.nickname ?? '')
+    setUseNickname(profile.use_nickname)
+    setSaveError(null)
+  }
+
   const inp: React.CSSProperties = { background: C.graphite, border: `1px solid ${C.steelDim}`, color: C.deck, fontSize: 14, padding: '10px 12px', width: '100%', outline: 'none', fontFamily: 'inherit', transition: 'border-color 0.15s' }
+
+  // Show a real loading / error state instead of silently rendering the form with blank
+  // fields while the public.users row is still being fetched (or failed to fetch) --
+  // that ambiguity is exactly what previously read as "the Profile page is just empty".
+  if (profileLoading) {
+    return (
+      <div style={{ background: C.graphite, minHeight: '100vh', paddingTop: '3.5rem' }} className="flex items-center justify-center">
+        <p style={{ color: C.steel, fontSize: 14 }}>Loading your profile…</p>
+      </div>
+    )
+  }
+  if (profileError) {
+    return (
+      <div style={{ background: C.graphite, minHeight: '100vh', paddingTop: '3.5rem' }} className="flex flex-col items-center justify-center px-4 gap-4">
+        <p style={{ color: C.red, fontSize: 14, textAlign: 'center' }}>Couldn't load your profile: {profileError}</p>
+        <button onClick={onRetryProfile} style={{ border: `1px solid ${C.cyan}50`, color: C.cyan, background: `${C.cyan}10`, fontSize: 13, fontWeight: 500, padding: '8px 20px', cursor: 'pointer' }}>Retry</button>
+      </div>
+    )
+  }
 
   return (
     <div style={{ background: C.graphite, minHeight: '100vh', paddingTop: '3.5rem' }}>
@@ -1780,6 +3236,21 @@ function ProfilePage() {
         <div style={{ border: `1px solid ${C.cyan}28`, background: C.graphite2 }} className="p-8 mb-5">
           <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.1em', marginBottom: 18 }}>IDENTITY</p>
           <div className="flex flex-col gap-5">
+            <div className="flex items-center gap-5">
+              <div style={{ width: 72, height: 72, borderRadius: '50%', overflow: 'hidden', background: C.graphite, border: `1px solid ${C.steelDim}`, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {avatarUrl
+                  ? <img src={avatarUrl} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  : <span style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 20, fontWeight: 700 }}>{(shownAs || '?').slice(0, 1).toUpperCase()}</span>}
+              </div>
+              <div>
+                <input ref={avatarInputRef} type="file" accept="image/*" onChange={handleAvatarChange} style={{ display: 'none' }} />
+                <button type="button" onClick={() => avatarInputRef.current?.click()} disabled={avatarUploading}
+                  style={{ border: `1px solid ${C.cyan}50`, color: C.cyan, background: `${C.cyan}10`, fontSize: 12, fontWeight: 500, padding: '7px 16px', cursor: avatarUploading ? 'default' : 'pointer', opacity: avatarUploading ? 0.6 : 1 }}>
+                  {avatarUploading ? 'Uploading…' : 'Change avatar'}
+                </button>
+                {avatarError && <p style={{ color: C.red, fontSize: 12, marginTop: 6 }}>{avatarError}</p>}
+              </div>
+            </div>
             <div>
               <label style={{ color: C.steel, fontSize: 12, fontFamily: "'JetBrains Mono',monospace", display: 'block', marginBottom: 6 }}>DISPLAY NAME</label>
               <input value={displayName} onChange={e => setDisplayName(e.target.value)} style={inp}
@@ -1811,20 +3282,21 @@ function ProfilePage() {
               <p style={{ color: C.steelDim, fontSize: 12, lineHeight: 1.6 }}>This nickname toggle applies to PuzzleStow display only. It does not affect how your identity is shown for PairSec service bookings — PairSec&apos;s trust model relies on transparent identity for in-person services.</p>
             </div>
           </div>
+          {saveError && <p style={{ color: C.red, fontSize: 12, marginTop: -6, marginBottom: 12 }}>{saveError}</p>}
           <div className="flex gap-3 mt-8">
-            <button style={{ background: C.cyan, color: C.graphite, fontWeight: 600, fontSize: 13, padding: '10px 24px' }} className="hover:brightness-110 transition-all">Save Changes</button>
-            <button style={{ color: C.steel, border: `1px solid ${C.steelDim}`, fontSize: 13, padding: '10px 24px' }} className="hover:text-deck transition-colors">Cancel</button>
+            <button onClick={handleSave} disabled={saving} style={{ background: C.cyan, color: C.graphite, fontWeight: 600, fontSize: 13, padding: '10px 24px', opacity: saving ? 0.6 : 1, cursor: saving ? 'default' : 'pointer' }} className="hover:brightness-110 transition-all">{saving ? 'Saving…' : 'Save Changes'}</button>
+            <button onClick={handleCancel} disabled={saving} style={{ color: C.steel, border: `1px solid ${C.steelDim}`, fontSize: 13, padding: '10px 24px' }} className="hover:text-deck transition-colors">Cancel</button>
           </div>
         </div>
         <div style={{ border: `1px solid ${C.cyan}18`, background: C.graphite2 }} className="p-6">
           <p style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.1em', marginBottom: 14 }}>QUALIFICATION</p>
           <div className="flex items-center gap-5">
-            <div style={{ background: C.blue, width: 44, height: 44 }} className="flex items-center justify-center">
-              <span style={{ color: C.deck, fontFamily: "'JetBrains Mono',monospace", fontSize: 14, fontWeight: 700 }}>ML</span>
+            <div style={{ background: qualTier.color, width: 44, height: 44 }} className="flex items-center justify-center">
+              <span style={{ color: C.graphite, fontFamily: "'JetBrains Mono',monospace", fontSize: 14, fontWeight: 700 }}>{qualTier.abbr}</span>
             </div>
             <div>
-              <p style={{ color: C.cyan, fontWeight: 600, fontSize: 16 }}>MidLod</p>
-              <p style={{ color: C.steelDim, fontSize: 13 }}>Tier 3 of 7 · 47 rated matches</p>
+              <p style={{ color: qualTier.color, fontWeight: 600, fontSize: 16 }}>{qualTier.name}</p>
+              <p style={{ color: C.steelDim, fontSize: 13 }}>Tier {qualTier.id} of {TIERS.length}</p>
             </div>
           </div>
         </div>
@@ -1837,15 +3309,51 @@ function ProfilePage() {
 // Not a public game mode: a harness for exercising the rules/opponent engine
 // (src/engine/rules.ts, src/engine/opponentEngine.ts) while a real backend
 // doesn't exist yet. See those files for what's approximated and why.
+
+// Log formatting helpers (Sergey, 2026-09-08: log entries should read "[дата] [время
+// загрузки] [время потраченное на загрузку] [расположение фигуры в формате PuzzleStow]",
+// bookended by a game-start entry carrying just the date/start time and a game-end entry
+// carrying the date/end time + final score). Plain functions, no locale dependency, so the
+// log format doesn't shift with the browser's regional settings.
+function pad2(n: number): string { return n.toString().padStart(2, '0') }
+function logDate(ts: number): string {
+  const d = new Date(ts)
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+}
+function logTime(ts: number): string {
+  const d = new Date(ts)
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`
+}
+function logDuration(ms: number): string {
+  if (ms < 1000) return `${Math.max(0, Math.round(ms))}ms`
+  const totalSec = ms / 1000
+  if (totalSec < 60) return `${totalSec.toFixed(1)}s`
+  const totalSecInt = Math.round(totalSec)
+  return `${Math.floor(totalSecInt / 60)}m ${pad2(totalSecInt % 60)}s`
+}
+
 function DevTestPage() {
-  const DEV_ROWS = 10 // matches Rated/Practice container size (v2 Part B)
+  // Qualification (TIERS[0] = UnderLodar) drives container size, not a fixed constant
+  // (Sergey, 2026-09-09): UnderLodar plays the training 15×11 container (row K exposed);
+  // winning 10 rated matches and passing the exam promotes to Lodar, which plays the
+  // standard competitive 15×10 used by every tier above UnderLodar.
+  const [qualTierId, setQualTierId] = useState<number>(1)
+  const DEV_ROWS = qualTierId === 1 ? 11 : 10
 
   const [difficulty, setDifficulty] = useState<Difficulty>('medium')
   const engine = useMemo(() => createOpponentEngine({ difficulty }), [difficulty])
 
   const [filledYou, setFilledYou] = useState<Set<string>>(new Set())
   const [filledOpp, setFilledOpp] = useState<Set<string>>(new Set())
-  const [usedIds, setUsedIds] = useState<Set<number>>(new Set())
+  // Two independent 27-figure pools, one per player (PairSec_Спецификация_Final_2026.docx §7.1:
+  // "у каждого контейнер и набор из 27 предметов-грузов" — EACH side has its own full 27, not one
+  // pool shared between them). Sergey, 2026-09-08: "исчезают предметы ходов каждого игрока" / "после
+  // 13-14 ходов фигур ни у кого не остаётся" — with a single shared usedIds, a figure requested for
+  // EITHER side drained the SAME counter, so a match only ever covered 27 total placements between
+  // both players (13-14 rounds) instead of 27 EACH (~27 rounds, 54 placements) per MVP_Rules.docx's
+  // end condition "Оба игрока разместили все фигуры".
+  const [usedForYou, setUsedForYou] = useState<Set<number>>(new Set())  // already requested FOR you (placed into your container)
+  const [usedForOpp, setUsedForOpp] = useState<Set<number>>(new Set()) // already requested FOR the opponent (placed into theirs)
   // Placed-piece metadata (id + which cells are the reference dots) so the containers
   // can render numbers/dots on every placed figure, not just a flat filled-cell color.
   const [piecesYou, setPiecesYou] = useState<{ id: number; cells: Cells; dotIdx: number[] }[]>([])
@@ -1871,6 +3379,16 @@ function DevTestPage() {
   const [log, setLog] = useState<{ id: number; t: number; text: string }[]>([])
   const [showInternals, setShowInternals] = useState(false)
   const logIdRef = useRef(0)
+  // When the figure currently incoming to YOU was requested — start of the "time spent on
+  // load" window the log reports for your placements.
+  const requestedAtRef = useRef<number>(Date.now())
+  // Structured mirror of the placement log lines, kept separately from the display strings
+  // so the PDF export (Sergey, 2026-09-08: "Экспорт лога в PDF, как отчёта по игре в
+  // задокументированном формате") builds its table from real fields instead of re-parsing
+  // formatted text.
+  const [moveRecords, setMoveRecords] = useState<LogMoveRecord[]>([])
+  const [gameStartInfo, setGameStartInfo] = useState<{ date: string; time: string } | null>(null)
+  const [gameEndInfo, setGameEndInfo] = useState<{ date: string; time: string; message: string; youScore: number; oppScore: number } | null>(null)
 
   // Each entry needs a stable, collision-free key: two pushLog calls in the same
   // synchronous handler (e.g. "You request X" immediately followed by "Opponent
@@ -1883,16 +3401,124 @@ function DevTestPage() {
   // Small color-coding for the log so it reads at a glance instead of a flat gray wall of text.
   function logColor(text: string): string {
     if (/wins?\b/i.test(text)) return /you win/i.test(text) ? C.green : C.red
-    if (/^draw/i.test(text)) return C.blue
+    if (/\bdraw\b/i.test(text)) return C.blue
     if (text.startsWith('You')) return C.cyan
     return C.steel
   }
 
-  const availableFigures = FIGURES.filter(f => !usedIds.has(f.id))
+  // One structured line per placement — player, when, how long it took to decide, the
+  // PuzzleStow notation for where it landed, any row/column it just closed, and the running
+  // score right after this load (Sergey, 2026-09-08 log-format request).
+  function logPlacement(player: 'You' | 'Opponent', fig: Figure, cells: Cells, at: number, spentMs: number, newlyClosed: string[], youScore: number, oppScore: number) {
+    const dotPoints = fig.dots.map(idx => ({ r: cells[idx][0], c: cells[idx][1] }))
+    const placement = formatNotation(fig.id, dotPoints, DEV_ROWS)
+    const closedText = newlyClosed.length ? ` — ${newlyClosed.join(', ')}` : ''
+    pushLog(`${player} — ${logDate(at)} ${logTime(at)} — spent ${logDuration(spentMs)} — placed ${fig.label} at ${placement}${closedText} — Score ${youScore}:${oppScore}`)
+    setMoveRecords(prev => [...prev, {
+      player, date: logDate(at), time: logTime(at), spentLabel: logDuration(spentMs),
+      figureLabel: fig.label, notation: placement, closed: newlyClosed, youScore, oppScore,
+    }])
+  }
+
+  // A "pass" event -- a requested figure has nowhere legal to go, or no figure is left
+  // that can be requested -- ends the game exactly like a placement does, but wasn't a
+  // placement, so it needs its own structured row (no notation, no time-spent) alongside
+  // logPlacement's, purely so the exported report shows what actually caused the ending
+  // instead of jumping straight from the last placement to the Result line.
+  function logPass(player: 'You' | 'Opponent', figureLabel: string, youScore: number, oppScore: number) {
+    const at = Date.now()
+    setMoveRecords(prev => [...prev, {
+      player, date: logDate(at), time: logTime(at), spentLabel: '—',
+      figureLabel, notation: '—', closed: [], youScore, oppScore,
+    }])
+  }
+
+  function logGameEnd(message: string, youScore: number, oppScore: number) {
+    const at = Date.now()
+    pushLog(`Game ended — ${logDate(at)} ${logTime(at)} — Final score ${youScore}:${oppScore} — ${message}`)
+    setGameEndInfo({ date: logDate(at), time: logTime(at), message, youScore, oppScore })
+  }
+
+  // PDF game report (Sergey, 2026-09-08) — same fields the on-screen log now carries
+  // (player, date, load time, time spent, PuzzleStow notation, row/column closed, running
+  // score), laid out as a proper document instead of a scrollback dump: brand wordmark,
+  // Stow Blue / Cargo Graphite from PuzzleStow_Brandbook_v1.1.docx, monospace for
+  // coordinates (Courier — the closest built-in jsPDF font to the brand's JetBrains Mono).
+  function exportGameReportPdf() {
+    const doc = new jsPDF({ unit: 'pt', format: 'a4' })
+    const margin = 40
+    const STOW_BLUE: [number, number, number] = [31, 79, 130]
+    const GRAPHITE: [number, number, number] = [28, 31, 38]
+    const STEEL: [number, number, number] = [163, 169, 181]
+    const DECK: [number, number, number] = [245, 247, 250]
+
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(18)
+    doc.setTextColor(...STOW_BLUE)
+    doc.text('PUZZLESTOW', margin, 50)
+    doc.setFontSize(12)
+    doc.setTextColor(...GRAPHITE)
+    doc.text('Game Report — Dev/Test Environment', margin, 68)
+
+    let y = 92
+    const metaLine = (label: string, value: string) => {
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...GRAPHITE)
+      doc.text(`${label}:`, margin, y)
+      doc.setFont('helvetica', 'normal')
+      doc.text(value, margin + 100, y)
+      y += 16
+    }
+    metaLine('Difficulty', difficulty)
+    if (gameStartInfo) metaLine('Started', `${gameStartInfo.date} ${gameStartInfo.time}`)
+    if (gameEndInfo) metaLine('Ended', `${gameEndInfo.date} ${gameEndInfo.time}`)
+    metaLine('Final score', gameEndInfo ? `${gameEndInfo.youScore}:${gameEndInfo.oppScore}` : `${closedYouTotal}:${closedOppTotal}`)
+    if (gameEndInfo) metaLine('Result', gameEndInfo.message)
+
+    autoTable(doc, {
+      startY: y + 8,
+      head: [['#', 'Player', 'Date', 'Time', 'Spent', 'Figure', 'Placement', 'Closed', 'Score']],
+      body: moveRecords.map((m, i) => [
+        String(i + 1), m.player, m.date, m.time, m.spentLabel, m.figureLabel, m.notation,
+        m.closed.length ? m.closed.join(', ') : '—', `${m.youScore}:${m.oppScore}`,
+      ]),
+      styles: { font: 'courier', fontSize: 8, cellPadding: 4, textColor: GRAPHITE },
+      headStyles: { fillColor: STOW_BLUE, textColor: DECK, font: 'helvetica', fontStyle: 'bold', fontSize: 9 },
+      alternateRowStyles: { fillColor: DECK },
+      margin: { left: margin, right: margin },
+    })
+
+    const finalY = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? y + 8
+    doc.setFontSize(9)
+    doc.setTextColor(...STEEL)
+    const generatedAt = Date.now()
+    doc.text(`Generated ${logDate(generatedAt)} ${logTime(generatedAt)} — local engine only, not the server-authoritative record.`, margin, finalY + 22)
+
+    const filenameDate = gameStartInfo?.date ?? logDate(generatedAt)
+    doc.save(`PuzzleStow_Game_Report_${filenameDate}.pdf`)
+  }
+
+  const availableFigures = FIGURES.filter(f => !usedForYou.has(f.id))
   const incomingFig = incomingFigId != null ? FIGURES.find(f => f.id === incomingFigId) ?? null : null
   const orientations = incomingFig ? getOrientations(incomingFig.cells) : []
-  const closedYou = closedRows(filledYou, DEV_ROWS)
-  const closedOpp = closedRows(filledOpp, DEV_ROWS)
+  // Dead/X cells (TO_DO.docx, 2026-09-08): purely geometric — cells with no path of
+  // empty cells up to the open top of the container are walled in, period, independent
+  // of which figures remain (see rules.ts computeDeadCells for why that's the model).
+  const deadYou = useMemo(() => computeDeadCells(filledYou, DEV_ROWS), [filledYou])
+  const deadOpp = useMemo(() => computeDeadCells(filledOpp, DEV_ROWS), [filledOpp])
+  const closedYou = closedRows(filledYou, DEV_ROWS, deadYou)
+  const closedOpp = closedRows(filledOpp, DEV_ROWS, deadOpp)
+  const closedYouCols = closedCols(filledYou, DEV_ROWS, deadYou)
+  const closedOppCols = closedCols(filledOpp, DEV_ROWS, deadOpp)
+  // "closed" for win/score purposes is rows AND columns combined — a completed column
+  // counts exactly like a completed row (TO_DO.docx: check highlighting of vertical AND
+  // horizontal rows).
+  const closedYouTotal = closedYou.size + closedYouCols.size
+  const closedOppTotal = closedOpp.size + closedOppCols.size
+  // Once the game has ended, gameEndInfo carries the one authoritative final score (which may be
+  // a forced 5, see item 17's follow-up) -- prefer it over the still-live closed counts so the
+  // panels/headers agree with the end-of-game banner and log line instead of showing a stale tally.
+  const displayYouScore = gameOver && gameEndInfo ? gameEndInfo.youScore : closedYouTotal
+  const displayOppScore = gameOver && gameEndInfo ? gameEndInfo.oppScore : closedOppTotal
   // Click-to-fill (item 8 follow-up): two-dot figures need point1+point2, single-dot
   // figures place from one anchor click (using the rotation buttons for orientation).
   const pointsNeeded = incomingFig ? (incomingFig.dots.length >= 2 ? 2 : 1) : 0
@@ -1964,23 +3590,41 @@ function DevTestPage() {
 
   function requestForOpp(fig: Figure) {
     if (gameOver || requester !== 'you') return
-    setUsedIds(prev => new Set(prev).add(fig.id))
+    const requestedAt = Date.now()
+    setUsedForOpp(prev => new Set(prev).add(fig.id))
     setLastRequestToOpp(fig.id)
     pushLog(`You request ${fig.label} for the opponent.`)
     const decision = engine.decidePlacement(fig, filledOpp, DEV_ROWS)
     if (decision.kind === 'pass') {
       pushLog(`Opponent: ${decision.message}`)
+      logPass('Opponent', `${fig.label} — no legal placement`, 5, closedOppTotal)
+      logGameEnd('You win — the opponent has no legal placement for that figure.', 5, closedOppTotal)
       setGameOver('You win — the opponent has no legal placement for that figure.')
       return
     }
     if (decision.kind === 'place') {
+      const before = filledOpp
       const next = new Set(filledOpp)
       decision.cells.forEach(([r, c]) => next.add(cellKey(r, c)))
       setFilledOpp(next)
       setPiecesOpp(prev => [...prev, { id: fig.id, cells: decision.cells, dotIdx: fig.dots }])
-      pushLog(`Opponent places ${fig.label}. ${decision.message}`)
-      const nowClosed = closedRows(next, DEV_ROWS)
-      if (nowClosed.size >= 5) { setGameOver('Opponent wins — 5 rows closed.'); return }
+      const deadBefore = computeDeadCells(before, DEV_ROWS)
+      const deadAfter = computeDeadCells(next, DEV_ROWS)
+      const rowsBefore = closedRows(before, DEV_ROWS, deadBefore)
+      const rowsAfter = closedRows(next, DEV_ROWS, deadAfter)
+      const colsBefore = closedCols(before, DEV_ROWS, deadBefore)
+      const colsAfter = closedCols(next, DEV_ROWS, deadAfter)
+      const newlyClosed = [
+        ...[...rowsAfter].filter(r => !rowsBefore.has(r)).map(r => `Row ${rowToLetter(r, DEV_ROWS)} closed`),
+        ...[...colsAfter].filter(c => !colsBefore.has(c)).map(c => `Column ${c} closed`),
+      ]
+      const oppClosedAfter = rowsAfter.size + colsAfter.size
+      logPlacement('Opponent', fig, decision.cells, Date.now(), Date.now() - requestedAt, newlyClosed, closedYouTotal, oppClosedAfter)
+      if (oppClosedAfter >= 5) {
+        logGameEnd('Opponent wins — 5 rows/columns closed.', closedYouTotal, oppClosedAfter)
+        setGameOver('Opponent wins — 5 rows/columns closed.')
+        return
+      }
     }
     setRequester('opp')
     setResponse('Waiting for the opponent to request a figure from you…')
@@ -1991,19 +3635,41 @@ function DevTestPage() {
     if (requester !== 'opp' || incomingFigId != null || gameOver) return
     const decision = engine.chooseFigureToRequest(availableFigures, lastRequestToOpp)
     if (decision.kind !== 'request') return
-    setUsedIds(prev => new Set(prev).add(decision.figureId))
+    setUsedForYou(prev => new Set(prev).add(decision.figureId))
     setLastRequestToYou(decision.figureId)
     setIncomingFigId(decision.figureId)
+    requestedAtRef.current = Date.now() // starts the "time spent on load" clock for your placement
     setRotIdx(0)
     setClickPoints([])
     setResponse(`Opponent: ${decision.message}`)
     pushLog(`Opponent requests ${FIGURES.find(f => f.id === decision.figureId)?.label} from you.`)
     const fig = FIGURES.find(f => f.id === decision.figureId)!
     if (!canPlaceAnywhere(fig, filledYou, DEV_ROWS)) {
+      logPass('You', `${fig.label} — no legal placement`, closedYouTotal, 5)
+      logGameEnd('Opponent wins — you have no legal placement for the requested figure.', closedYouTotal, 5)
       setGameOver('Opponent wins — you have no legal placement for the requested figure.')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requester, incomingFigId, gameOver])
+
+  // Sergey, 2026-09-08 ("После закрытия ряда набор грузов соперника недоступен для выбора -
+  // нет возможности продолжать игру" -> confirmed rule: "нет возможности хода ... ты проиграл"):
+  // it's your turn to pick a figure from your own 27 to request for the opponent, but every
+  // figure is either already requested (usedForOpp) or blocked by the anti-repeat "защита от
+  // дурака" rule (fig.id === lastRequestToYou) with nothing else left -- the PICKED BY YOU panel
+  // goes fully non-actionable and, before this fix, nothing ever declared the game over, so the
+  // player was just stuck with a greyed-out panel and no explanation. Same "no legal move = you
+  // lose" rule the opponent-request effect above already applies to your incoming figure, mirrored
+  // here for the outgoing-request side of the turn.
+  useEffect(() => {
+    if (requester !== 'you' || incomingFigId != null || gameOver) return
+    const avail = FIGURES.filter(f => !usedForOpp.has(f.id) && f.id !== lastRequestToYou)
+    if (avail.length > 0) return
+    logPass('You', 'no figure left to request', closedYouTotal, 5)
+    logGameEnd('Opponent wins — you have no figure left that you are allowed to request.', closedYouTotal, 5)
+    setGameOver('Opponent wins — you have no figure left that you are allowed to request.')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requester, incomingFigId, gameOver, usedForOpp, lastRequestToYou])
 
   function flipCoin() {
     setCoinState('spinning')
@@ -2013,6 +3679,9 @@ function DevTestPage() {
       setCoinState('done')
       setRequester(youFirst ? 'opp' : 'you') // "opp requests first" means you get the first incoming figure
       setResponse(youFirst ? 'Coin: you enter first — the opponent requests your first figure.' : 'Coin: opponent enters first — pick a figure to request for them.')
+      const startedAt = Date.now()
+      pushLog(`Game started — ${logDate(startedAt)} ${logTime(startedAt)}`)
+      setGameStartInfo({ date: logDate(startedAt), time: logTime(startedAt) })
       pushLog(youFirst ? 'Coin flip: you go first.' : 'Coin flip: opponent goes first.')
     }, 5000)
   }
@@ -2072,6 +3741,7 @@ function DevTestPage() {
       return
     }
     setPendingFairPlay(null)
+    const before = filledYou
     const next = new Set(filledYou)
     result.cells!.forEach(([r, c]) => next.add(cellKey(r, c)))
     setFilledYou(next)
@@ -2079,12 +3749,25 @@ function DevTestPage() {
     setNotation('')
     setClickPoints([])
     setIncomingFigId(null)
-    pushLog(`You place ${incomingFig.label} at ${notation.toUpperCase()}.`)
-    const nowClosed = closedRows(next, DEV_ROWS)
-    if (nowClosed.size >= 5) { setGameOver('You win — 5 rows closed.'); return }
-    if (usedIds.size >= 27) {
-      setGameOver(nowClosed.size === closedOpp.size ? 'Draw — all 27 figures placed, equal rows closed.'
-        : nowClosed.size > closedOpp.size ? 'You win — more rows closed when cargo ran out.' : 'Opponent wins — more rows closed when cargo ran out.')
+    const deadBefore = computeDeadCells(before, DEV_ROWS)
+    const deadAfter = computeDeadCells(next, DEV_ROWS)
+    const rowsBefore = closedRows(before, DEV_ROWS, deadBefore)
+    const rowsAfter = closedRows(next, DEV_ROWS, deadAfter)
+    const colsBefore = closedCols(before, DEV_ROWS, deadBefore)
+    const colsAfter = closedCols(next, DEV_ROWS, deadAfter)
+    const newlyClosed = [
+      ...[...rowsAfter].filter(r => !rowsBefore.has(r)).map(r => `Row ${rowToLetter(r, DEV_ROWS)} closed`),
+      ...[...colsAfter].filter(c => !colsBefore.has(c)).map(c => `Column ${c} closed`),
+    ]
+    const nowClosed = rowsAfter.size + colsAfter.size
+    const placedAt = Date.now()
+    logPlacement('You', incomingFig, result.cells!, placedAt, placedAt - requestedAtRef.current, newlyClosed, nowClosed, closedOppTotal)
+    if (nowClosed >= 5) { logGameEnd('You win — 5 rows/columns closed.', nowClosed, closedOppTotal); setGameOver('You win — 5 rows/columns closed.'); return }
+    if (usedForYou.size >= 27 && usedForOpp.size >= 27) {
+      const finalMsg = nowClosed === closedOppTotal ? 'Draw — all 27 figures placed, equal rows/columns closed.'
+        : nowClosed > closedOppTotal ? 'You win — more rows/columns closed when cargo ran out.' : 'Opponent wins — more rows/columns closed when cargo ran out.'
+      logGameEnd(finalMsg, nowClosed, closedOppTotal)
+      setGameOver(finalMsg)
       return
     }
     setResponse('Placed. Choose a figure to request for the opponent.')
@@ -2092,11 +3775,12 @@ function DevTestPage() {
   }
 
   function resetGame() {
-    setFilledYou(new Set()); setFilledOpp(new Set()); setUsedIds(new Set())
+    setFilledYou(new Set()); setFilledOpp(new Set()); setUsedForYou(new Set()); setUsedForOpp(new Set())
     setPiecesYou([]); setPiecesOpp([]); setClickPoints([])
     setCoinState('idle'); setRequester(null); setIncomingFigId(null)
     setLastRequestToYou(null); setLastRequestToOpp(null); setRotIdx(0); setNotation('')
     setPendingFairPlay(null); setGameOver(null); setLog([])
+    setMoveRecords([]); setGameStartInfo(null); setGameEndInfo(null)
     setResponse('Flip the coin to decide who requests first.')
   }
 
@@ -2124,7 +3808,7 @@ function DevTestPage() {
           <div className="flex flex-col lg:flex-row gap-5 items-stretch">
             <div style={{ border: `1px solid ${C.cyan}30`, background: C.graphite2 }} className="p-4 flex-1 min-w-0">
               <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
-                <span style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>YOUR CONTAINER — {DEV_ROWS} rows, {closedYou.size} closed</span>
+                <span style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>YOUR CONTAINER — {DEV_ROWS} rows, {displayYouScore} closed</span>
                 {incomingFig && !gameOver && (
                   <span style={{ color: C.steelDim, fontSize: 11 }}>
                     Click {pointsNeeded === 2 ? "point 1, then point 2 — point 1 is the figure's own fixed dot and sets the rotation" : 'a point'} below to fill the request field ({clickPoints.length}/{pointsNeeded})
@@ -2137,46 +3821,72 @@ function DevTestPage() {
                   </span>
                 )}
               </div>
-              <div className="overflow-x-auto">
-                <ContainerGrid filledCells={filledYou} closedRows={closedYou} cellSize={24} rows={DEV_ROWS}
-                  onCellHover={incomingFig && !gameOver ? (r, c) => setHoverCell({ r, c }) : undefined}
-                  onCellLeave={() => setHoverCell(null)}
-                  pieces={piecesYou}
-                  onCellClick={incomingFig && !gameOver ? handleYourContainerClick : undefined}
-                  ghostCells={ghostCells} ghostValid={ghostValid} markCells={clickPoints} />
+              {DEV_ROWS === 11 && (
+                <p style={{ color: C.steel, fontSize: 12, fontStyle: 'italic', marginBottom: 10 }}>
+                  Win ten times first, successfully pass the exam, and advance to the Lodar 15X10 level
+                </p>
+              )}
+              <div className="flex gap-3 items-start">
+                <div className="overflow-x-auto">
+                  <ContainerGrid filledCells={filledYou} closedRows={closedYou} closedCols={closedYouCols} deadCells={deadYou} cellSize={24} rows={DEV_ROWS}
+                    onCellHover={incomingFig && !gameOver ? (r, c) => setHoverCell({ r, c }) : undefined}
+                    onCellLeave={() => setHoverCell(null)}
+                    pieces={piecesYou}
+                    onCellClick={incomingFig && !gameOver ? handleYourContainerClick : undefined}
+                    ghostCells={ghostCells} ghostValid={ghostValid} markCells={clickPoints} />
+                </div>
+                <ScorePanel myClosed={displayYouScore} oppClosed={displayOppScore} breakdown={`${closedYou.size}R · ${closedYouCols.size}C`} color={C.cyan} />
               </div>
             </div>
 
             <FigureBankPanel
-              title="LOADED BY YOU · PICKED BY OPPONENT — view only, shared pool"
+              title="PICKED BY OPPONENT — view only, your 27"
               panelColor={C.steelDim} itemColor={C.steel}
               getStatus={fig => ({
-                used: usedIds.has(fig.id), actionable: true,
-                hint: usedIds.has(fig.id) ? ' (already used)' : ' (still in the shared pool)',
+                used: usedForYou.has(fig.id), actionable: true,
+                hint: usedForYou.has(fig.id) ? ' (already placed in your container)' : ' (still available for the opponent to assign you)',
               })} />
           </div>
 
           <div className="flex flex-col lg:flex-row gap-5 items-stretch flex-1">
             <div style={{ border: `1px solid ${C.steelDim}25`, background: C.graphite2 }} className="p-4 flex-1 min-w-0 flex flex-col">
               <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
-                <span style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>OPPONENT CONTAINER — {closedOpp.size} closed · {difficulty}</span>
+                <span style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>OPPONENT CONTAINER — {displayOppScore} closed · {difficulty}</span>
               </div>
-              <div className="overflow-x-auto"><ContainerGrid filledCells={filledOpp} closedRows={closedOpp} cellSize={18} rows={DEV_ROWS} pieces={piecesOpp} /></div>
+              <div className="flex gap-3 items-start">
+                <div className="overflow-x-auto">
+                  <ContainerGrid filledCells={filledOpp} closedRows={closedOpp} closedCols={closedOppCols} deadCells={deadOpp} cellSize={18} rows={DEV_ROWS} pieces={piecesOpp} />
+                </div>
+                <ScorePanel myClosed={displayOppScore} oppClosed={displayYouScore} breakdown={`${closedOpp.size}R · ${closedOppCols.size}C`} color={C.steelDim} />
+              </div>
             </div>
 
             <FigureBankPanel
-              title={`LOADED BY OPPONENT · PICKED BY YOU${requester === 'you' && !gameOver && !incomingFig ? ' — click one to choose' : ''}`}
+              title={`PICKED BY YOU — your own 27${requester === 'you' && !gameOver && !incomingFig ? ' — click one to choose' : ''}`}
               panelColor={C.blue} itemColor={C.cyan} onSelect={requestForOpp}
               getStatus={fig => {
-                const used = usedIds.has(fig.id)
+                const used = usedForOpp.has(fig.id)
                 const actionable = requester === 'you' && !gameOver && !incomingFig && !used && fig.id !== lastRequestToYou
-                const hint = used ? ' (already used)' : fig.id === lastRequestToYou ? ' (repeat-request blocked)' : !actionable ? ' (not your turn to request)' : ''
+                const hint = used ? ' (already requested for the opponent)' : fig.id === lastRequestToYou ? ' (repeat-request blocked)' : !actionable ? ' (not your turn to request)' : ''
                 return { used, actionable, hint }
               }} />
           </div>
         </div>
 
         <div className="flex flex-col gap-4 h-full">
+          <div style={{ border: `1px solid ${C.steel}40`, background: C.graphite2 }} className="p-5">
+            <p style={{ color: C.steel, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>QUALIFICATION (TEST)</p>
+            <select value={qualTierId} onChange={e => { setQualTierId(Number(e.target.value)); resetGame() }}
+              style={{ width: '100%', background: C.graphite, border: `1px solid ${C.steel}`, color: C.deck, fontFamily: "'JetBrains Mono',monospace", fontSize: 13, padding: '8px 10px' }}>
+              {TIERS.map(t => (
+                <option key={t.id} value={t.id}>{t.name} — {t.id === 1 ? '15×11 (training)' : '15×10 (competitive)'}</option>
+              ))}
+            </select>
+            <p style={{ color: C.steelDim, fontSize: 11, marginTop: 8 }}>
+              Container size follows qualification: UnderLodar plays 15×11 (row K exposed); Lodar and above play the standard 15×10. Changing this starts a new game.
+            </p>
+          </div>
+
           <div style={{ border: `1px solid ${C.blue}40`, background: C.graphite2 }} className="p-5">
             <p style={{ color: C.blue, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>OPPONENT DIFFICULTY</p>
             <select value={difficulty} onChange={e => setDifficulty(e.target.value as Difficulty)}
@@ -2239,11 +3949,17 @@ function DevTestPage() {
           so neither it nor the layout above it grows no matter how long the log gets. */}
       <div className="max-w-7xl mx-auto px-4 pb-5">
         <div style={{ border: `1px solid ${C.steelDim}25`, background: C.graphite2 }} className="p-5">
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between mb-2 gap-3 flex-wrap">
             <p style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>LOG</p>
-            <button onClick={() => setShowInternals(s => !s)} style={{ color: C.steelDim, fontSize: 10, fontFamily: "'JetBrains Mono',monospace", textDecoration: 'underline' }}>
-              {showInternals ? 'hide' : 'show'} engine internals
-            </button>
+            <div className="flex items-center gap-4">
+              <button onClick={exportGameReportPdf} disabled={!moveRecords.length}
+                style={{ color: moveRecords.length ? C.cyan : C.steelDim, fontSize: 10, fontFamily: "'JetBrains Mono',monospace", textDecoration: 'underline', opacity: moveRecords.length ? 1 : 0.4, cursor: moveRecords.length ? 'pointer' : 'default' }}>
+                Export (PDF)
+              </button>
+              <button onClick={() => setShowInternals(s => !s)} style={{ color: C.steelDim, fontSize: 10, fontFamily: "'JetBrains Mono',monospace", textDecoration: 'underline' }}>
+                {showInternals ? 'hide' : 'show'} engine internals
+              </button>
+            </div>
           </div>
           <div className="max-h-64 overflow-y-auto pr-1">
             {log.map(entry => (
@@ -2258,7 +3974,7 @@ function DevTestPage() {
           </div>
           {showInternals && (
             <pre style={{ color: C.steelDim, fontSize: 10, marginTop: 8, whiteSpace: 'pre-wrap', borderTop: `1px solid ${C.steelDim}25`, paddingTop: 8 }}>
-{JSON.stringify({ difficulty: engine.difficulty, targetWinRate: engine.targetWinRate, usedIds: [...usedIds], lastRequestToYou, lastRequestToOpp, requester }, null, 2)}
+{JSON.stringify({ difficulty: engine.difficulty, targetWinRate: engine.targetWinRate, usedForYou: [...usedForYou], usedForOpp: [...usedForOpp], lastRequestToYou, lastRequestToOpp, requester }, null, 2)}
             </pre>
           )}
         </div>
@@ -2269,8 +3985,48 @@ function DevTestPage() {
 
 // ── App ───────────────────────────────────────────────────────────────────────
 export default function App() {
-  const [page, setPage] = useState<Page>('home')
-  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [page, setPage] = useState<Page>(() => (getAuthRedirectType() === 'recovery' ? 'auth' : 'home'))
+  const [session, setSession] = useState<Session | null>(null)
+  const [profile, setProfile] = useState<PuzzleStowProfile | null>(null)
+  const [profileLoading, setProfileLoading] = useState(false)
+  const [profileError, setProfileError] = useState<string | null>(null)
+  const [profileRefreshKey, setProfileRefreshKey] = useState(0)
+  const isLoggedIn = !!session
+
+  // One-time banner text for landing back here from a Supabase auth email (confirm
+  // signup / email change). Password recovery gets its own dedicated AuthPage screen
+  // instead (see `page` initializer + `recoveryMode` below), not a banner.
+  const [authNotice, setAuthNotice] = useState<string | null>(() => {
+    const type = getAuthRedirectType()
+    if (type === 'signup') return 'Email confirmed — you are now signed in.'
+    if (type === 'email_change') return 'Email address confirmed.'
+    return null
+  })
+
+  // Track the Supabase Auth session directly -- getSession() for whatever's already
+  // in local storage on load, onAuthStateChange for every sign-in / sign-out / token
+  // refresh after that (including the sign-in AuthPage itself triggers).
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSession(data.session))
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => setSession(newSession))
+    return () => sub.subscription.unsubscribe()
+  }, [])
+
+  // public.users is 1:1 with the session's auth user (item 11 migrations) -- load or
+  // clear the profile row whenever the session changes. Tracks loading/error separately
+  // from "no row yet" so ProfilePage can show a spinner or a retry instead of silently
+  // rendering blank fields while the fetch is still in flight or failed.
+  useEffect(() => {
+    if (!session) { setProfile(null); setProfileError(null); setProfileLoading(false); return }
+    setProfileLoading(true)
+    setProfileError(null)
+    supabase.from('users').select('*').eq('id', session.user.id).single()
+      .then(({ data, error }) => {
+        setProfileLoading(false)
+        if (error) { setProfileError(error.message); return }
+        setProfile((data as PuzzleStowProfile) ?? null)
+      })
+  }, [session, profileRefreshKey])
 
   // There's no router — Page is just a state switch — so nothing else resets scroll when
   // it changes. Without this, navigating away from a scrolled-down page (e.g. clicking a
@@ -2283,24 +4039,39 @@ export default function App() {
   if (page === 'auth') {
     return (
       <AuthPage
-        onAuth={() => setIsLoggedIn(true)}
+        onAuth={() => {}}
         setPage={(p: Page) => setPage(p)}
+        recoveryMode={getAuthRedirectType() === 'recovery'}
       />
     )
   }
 
   return (
     <div style={{ background: C.graphite, minHeight: '100vh' }}>
-      <Nav page={page} setPage={setPage} isLoggedIn={isLoggedIn} onSignOut={() => setIsLoggedIn(false)} />
+      <Nav page={page} setPage={setPage} isLoggedIn={isLoggedIn} onSignOut={() => { supabase.auth.signOut() }} />
+      {authNotice && (
+        <div style={{ background: `${C.cyan}18`, borderBottom: `1px solid ${C.cyan}40`, color: C.cyan, fontSize: 13, padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, position: 'relative' }}>
+          <span>{authNotice}</span>
+          <button onClick={() => setAuthNotice(null)} style={{ color: C.cyan, fontSize: 16, lineHeight: 1, position: 'absolute', right: 16 }} aria-label="Dismiss">×</button>
+        </div>
+      )}
       {page === 'home'      && <HomePage setPage={setPage} />}
       {page === 'figures'   && <FiguresPage />}
       {page === 'rules'     && <RulesPage />}
       {page === 'lore'      && <LorePage />}
       {page === 'play'      && <PlayPage mode="rated" />}
-      {page === 'practice'  && <PracticePage />}
-      {page === 'sandbox'   && <SandboxPage />}
+      {page === 'practice'  && (isLoggedIn
+        ? <PracticePage />
+        : <GatedPreview title="Sign in to play Practice" blurb="Practice runs against the built-in algorithmic engine — unrated, for training. Sign in to unlock it."
+            features={['An unrated match against the algorithmic engine, at your chosen difficulty', 'The same rules and validation as a real match, with nothing at stake', 'A live log of every move, with PDF export when the match ends']}
+            setPage={setPage}><PracticePage /></GatedPreview>)}
+      {page === 'sandbox'   && (isLoggedIn
+        ? <SandboxPage setPage={setPage} />
+        : <GatedPreview title="Sign in to use the Sandbox" blurb="Free placement, rule highlights, and a step-by-step tutorial — sign in to start experimenting."
+            features={['A 4-step guided tutorial: your first placement, notation, and the step-height rule explained live', 'Free placement of all 27 figures afterward, with no limits or scoring', 'Toggleable highlights for every placement rule (support, steps, overhang, return path)']}
+            setPage={setPage}><SandboxPreview /></GatedPreview>)}
       {page === 'printplay' && <PrintPlayPage />}
-      {page === 'profile'   && <ProfilePage />}
+      {page === 'profile'   && <ProfilePage session={session} profile={profile} onProfileUpdated={setProfile} profileLoading={profileLoading} profileError={profileError} onRetryProfile={() => setProfileRefreshKey(k => k + 1)} />}
       {page === 'devtest'   && <DevTestPage />}
     </div>
   )
