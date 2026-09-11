@@ -2560,6 +2560,26 @@ function AuthPage({ onAuth, setPage, recoveryMode }: { onAuth: () => void; setPa
   const [recoverySubmitting, setRecoverySubmitting] = useState(false)
   const [recoveryError, setRecoveryError] = useState('')
   const [recoveryDone, setRecoveryDone] = useState(false)
+  const [recoveryReady, setRecoveryReady] = useState(false)
+  const [recoveryExpired, setRecoveryExpired] = useState(false)
+
+  // Wait for Supabase to actually finish establishing the session from the recovery
+  // link before letting the form submit -- checks whatever's already resolved, listens
+  // for the PASSWORD_RECOVERY event that fires once parsing completes, and gives up
+  // after 10s (expired/already-used link) instead of leaving the form silently broken.
+  useEffect(() => {
+    if (!recoveryMode) return
+    let cancelled = false
+    supabase.auth.getSession().then(({ data }) => {
+      if (!cancelled && data.session) setRecoveryReady(true)
+    })
+    const { data: sub } = supabase.auth.onAuthStateChange((event, newSession) => {
+      if (cancelled) return
+      if (newSession && (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN')) setRecoveryReady(true)
+    })
+    const timeout = window.setTimeout(() => { if (!cancelled) setRecoveryExpired(true) }, 10000)
+    return () => { cancelled = true; sub.subscription.unsubscribe(); window.clearTimeout(timeout) }
+  }, [recoveryMode])
 
   const upd = (k: string, v: string | boolean) => setForm(f => ({ ...f, [k]: v }))
   const updSignIn = (k: 'email' | 'password', v: string) => setSignIn(s => ({ ...s, [k]: v }))
@@ -2669,6 +2689,29 @@ function AuthPage({ onAuth, setPage, recoveryMode }: { onAuth: () => void; setPa
               Your new password is set. You're already signed in with it.
             </p>
             <button onClick={() => setPage('home')} style={{ background: C.blue, color: C.deck, fontSize: 14, fontWeight: 600, padding: '12px 24px', border: 'none', cursor: 'pointer' }}>Continue</button>
+          </div>
+        </div>
+      )
+    }
+    if (!recoveryReady) {
+      return (
+        <div style={{ background: C.graphite, minHeight: '100vh' }} className="flex items-center justify-center px-4">
+          <div style={{ background: C.graphite2, border: `1px solid ${C.cyan}28`, padding: 40, maxWidth: 420, width: '100%', textAlign: 'center' }}>
+            {recoveryExpired ? (
+              <>
+                <h2 style={{ color: C.deck, fontSize: 22, fontWeight: 700, marginBottom: 12 }}>Link expired</h2>
+                <p style={{ color: C.steel, fontSize: 14, lineHeight: 1.7, marginBottom: 28 }}>
+                  This password reset link has expired or was already used. Request a new one from the sign-in page.
+                </p>
+                <button onClick={() => { window.location.href = window.location.origin }}
+                  style={{ background: C.blue, color: C.deck, fontSize: 14, fontWeight: 600, padding: '12px 24px', border: 'none', cursor: 'pointer' }}>Back to sign in</button>
+              </>
+            ) : (
+              <>
+                <h2 style={{ color: C.deck, fontSize: 22, fontWeight: 700, marginBottom: 12 }}>Preparing password reset…</h2>
+                <p style={{ color: C.steel, fontSize: 14, lineHeight: 1.7 }}>Verifying your reset link, one moment…</p>
+              </>
+            )}
           </div>
         </div>
       )
@@ -4358,6 +4401,11 @@ function DevTestPage() {
 // ── App ───────────────────────────────────────────────────────────────────────
 export default function App() {
   const [page, setPage] = useState<Page>(() => (getAuthRedirectType() === 'recovery' ? 'auth' : 'home'))
+  // Captured once, like `page` above -- getAuthRedirectType() reads the URL hash live,
+  // and Supabase's own client clears that hash once it finishes parsing the recovery
+  // tokens from it, so recomputing this on every render would flip it back to false
+  // right as the recovery session becomes ready (see AuthPage's recoveryMode usage).
+  const [isRecoveryFlow] = useState(() => getAuthRedirectType() === 'recovery')
   const [session, setSession] = useState<Session | null>(null)
   const [profile, setProfile] = useState<PuzzleStowProfile | null>(null)
   const [profileLoading, setProfileLoading] = useState(false)
@@ -4388,16 +4436,35 @@ export default function App() {
   // clear the profile row whenever the session changes. Tracks loading/error separately
   // from "no row yet" so ProfilePage can show a spinner or a retry instead of silently
   // rendering blank fields while the fetch is still in flight or failed.
+  //
+  // PGRST116 ("Cannot coerce the result to a single JSON object") here means RLS returned
+  // zero rows for this exact id -- direct testing against the DB confirms the row and the
+  // `auth.uid() = id` policy are both fine, so in practice this has only shown up as a
+  // transient client-side desync (e.g. supabase-js hadn't finished attaching the current
+  // access token yet, or it rotated in another tab a moment earlier). Re-check the session
+  // and retry once before surfacing the raw error to the user.
   useEffect(() => {
     if (!session) { setProfile(null); setProfileError(null); setProfileLoading(false); return }
+    let cancelled = false
     setProfileLoading(true)
     setProfileError(null)
-    supabase.from('users').select('*').eq('id', session.user.id).single()
-      .then(({ data, error }) => {
+    const load = async (alreadyRetried: boolean) => {
+      const { data, error } = await supabase.from('users').select('*').eq('id', session.user.id).single()
+      if (cancelled) return
+      if (error) {
+        if (!alreadyRetried && error.code === 'PGRST116') {
+          const { data: fresh } = await supabase.auth.getSession()
+          if (!cancelled && fresh.session) { await load(true); return }
+        }
         setProfileLoading(false)
-        if (error) { setProfileError(error.message); return }
-        setProfile((data as PuzzleStowProfile) ?? null)
-      })
+        setProfileError(error.message)
+        return
+      }
+      setProfileLoading(false)
+      setProfile((data as PuzzleStowProfile) ?? null)
+    }
+    load(false)
+    return () => { cancelled = true }
   }, [session, profileRefreshKey])
 
   // There's no router — Page is just a state switch — so nothing else resets scroll when
@@ -4413,7 +4480,7 @@ export default function App() {
       <AuthPage
         onAuth={() => {}}
         setPage={(p: Page) => setPage(p)}
-        recoveryMode={getAuthRedirectType() === 'recovery'}
+        recoveryMode={isRecoveryFlow}
       />
     )
   }
