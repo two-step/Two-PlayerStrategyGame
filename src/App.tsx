@@ -1338,7 +1338,12 @@ function LorePage() {
                 {bOpen ? '− згарнуць' : '+ разгарнуць'}
               </button>
             </div>
-            {bOpen && <p style={{ color: `${C.deck}bb`, fontSize: 15, lineHeight: 1.9 }}>Мазгавая тэрапія знаходзіцца недзе побач з працоўнай.</p>}
+            {bOpen && (
+              <>
+                <p style={{ color: `${C.deck}bb`, fontSize: 15, lineHeight: 1.9, marginBottom: 14 }}>Пасланне ад старажытных Лодараў:</p>
+                <p style={{ color: `${C.deck}bb`, fontSize: 15, lineHeight: 1.9, fontStyle: 'italic' }}>«Мы спадзяемся, што вам хопіць тысячагоддзя, можа быць, два, каб атрымаць першапачатковыя веды, якія ў канчатковым выніку прывядуць вас да ўсіх сакрэтаў складання рэчаў. Гэтыя 27 прадметаў прадстаўлены вам у выглядзе гульні, у якой удзельнічаюць два гульцы: адзін угадвае і кажа, што трэба пакласці, іншы, ламае галаву над тым, як гэта пакласці, і наадварот. Такі падвойны мазгавы штурм дасць вам вынік хутчэй, чым складанне за ўсё ў адну галаву. Не забывайце пра час, які праходзіць паміж ітэрацыямі складання рэчаў. Дзесьці паскорце працэс, дзесьці прытармазіце ці стабілізуйце.»</p>
+              </>
+            )}
           </div>
           <div style={{ borderTop: `1px solid ${C.cyan}18`, paddingTop: 28 }}>
             <p style={{ color: C.steelDim, fontSize: 13 }}>The full Legend of the Lodars is an ongoing narrative developed alongside the game&apos;s community. Follow the Telegram channel for new chapters.</p>
@@ -2525,7 +2530,7 @@ function SandboxPage({ setPage: _setPage }: { setPage: (p: Page) => void }) {
 // ── Auth Page — Light Deck bg, flip card ──────────────────────────────────────
 function AuthPage({ onAuth, setPage, recoveryMode }: { onAuth: () => void; setPage: (p: Page) => void; recoveryMode?: boolean }) {
   const [isSignUp, setIsSignUp] = useState(false)
-  const [form, setForm] = useState({ firstName: '', lastName: '', nickname: '', useNickname: false, email: '', password: '', confirm: '', agree: false })
+  const [form, setForm] = useState({ firstName: '', lastName: '', nickname: '', useNickname: false, email: '', password: '', confirm: '', agree: false, sendNews: false })
   const [signIn, setSignIn] = useState({ email: '', password: '' })
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [submitted, setSubmitted] = useState(false)
@@ -2610,6 +2615,7 @@ function AuthPage({ onAuth, setPage, recoveryMode }: { onAuth: () => void; setPa
             name: `${form.firstName.trim()} ${form.lastName.trim()}`.trim(),
             nickname: form.nickname.trim() || null,
             use_nickname: form.useNickname,
+            subscribed_to_news: form.sendNews,
             agreed_to_terms_at: new Date().toISOString(),
           },
         },
@@ -2852,6 +2858,10 @@ function AuthPage({ onAuth, setPage, recoveryMode }: { onAuth: () => void; setPa
                   <span style={{ color: errors.agree ? C.red : C.steel, fontSize: 13 }}>I have read and agree to the game rules and terms of use</span>
                 </label>
                 {errors.agree && <p style={err}>{errors.agree}</p>}
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <Checkbox checked={form.sendNews} onChange={() => upd('sendNews', !form.sendNews)} />
+                  <span style={{ color: C.steel, fontSize: 13 }}>Send me news and updates about PuzzleStow</span>
+                </label>
                 <button onClick={handleSubmit} disabled={submitting} style={{ ...primaryBtn, opacity: submitting ? 0.6 : 1, cursor: submitting ? 'default' : 'pointer' }} onMouseOver={e => (e.currentTarget.style.filter = 'brightness(0.9)')} onMouseOut={e => (e.currentTarget.style.filter = '')}>
                   {submitting ? 'Creating account…' : 'Create Account'}
                 </button>
@@ -3151,6 +3161,7 @@ function ProfilePage({ session, profile, onProfileUpdated, profileLoading, profi
   const [displayName, setDisplayName] = useState('')
   const [nickname, setNickname] = useState('')
   const [useNickname, setUseNickname] = useState(false)
+  const [subscribedToNews, setSubscribedToNews] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
@@ -3163,6 +3174,7 @@ function ProfilePage({ session, profile, onProfileUpdated, profileLoading, profi
     setDisplayName(profile.name)
     setNickname(profile.nickname ?? '')
     setUseNickname(profile.use_nickname)
+    setSubscribedToNews(profile.subscribed_to_news)
   }, [profile])
 
   // Avatar is stored as a bytea hex string (see supabaseClient.ts) -- rebuild a
@@ -3210,7 +3222,7 @@ function ProfilePage({ session, profile, onProfileUpdated, profileLoading, profi
     setSaving(true)
     setSaveError(null)
     const { data, error } = await supabase.from('users')
-      .update({ name: displayName, nickname: nickname.trim() || null, use_nickname: useNickname })
+      .update({ name: displayName, nickname: nickname.trim() || null, use_nickname: useNickname, subscribed_to_news: subscribedToNews })
       .eq('id', session.user.id)
       .select()
       .single()
@@ -3224,6 +3236,7 @@ function ProfilePage({ session, profile, onProfileUpdated, profileLoading, profi
     setDisplayName(profile.name)
     setNickname(profile.nickname ?? '')
     setUseNickname(profile.use_nickname)
+    setSubscribedToNews(profile.subscribed_to_news)
     setSaveError(null)
   }
 
@@ -3300,6 +3313,18 @@ function ProfilePage({ session, profile, onProfileUpdated, profileLoading, profi
             <div style={{ background: `${C.blue}15`, border: `1px solid ${C.blue}40`, padding: '12px 16px' }}>
               <p style={{ color: C.blue, fontSize: 11, fontFamily: "'JetBrains Mono',monospace", marginBottom: 5, letterSpacing: '0.08em' }}>PAIRSEC SCOPE NOTE</p>
               <p style={{ color: C.steelDim, fontSize: 12, lineHeight: 1.6 }}>This nickname toggle applies to PuzzleStow display only. It does not affect how your identity is shown for PairSec service bookings — PairSec&apos;s trust model relies on transparent identity for in-person services.</p>
+            </div>
+            <div style={{ borderTop: `1px solid ${C.steelDim}30`, paddingTop: 18 }}>
+              <label className="flex items-start gap-4 cursor-pointer">
+                <div onClick={() => setSubscribedToNews(!subscribedToNews)}
+                  style={{ width: 18, height: 18, border: `1.5px solid ${subscribedToNews ? C.cyan : C.steelDim}`, background: subscribedToNews ? C.cyan : 'transparent', flexShrink: 0, marginTop: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.15s' }}>
+                  {subscribedToNews && <svg width={10} height={10} viewBox="0 0 10 10" fill="none" stroke={C.graphite} strokeWidth={2}><polyline points="1.5,5 4,7.5 8.5,2.5" /></svg>}
+                </div>
+                <div>
+                  <p style={{ color: C.deck, fontSize: 14, fontWeight: 500 }}>Send me news and updates</p>
+                  <p style={{ color: C.steelDim, fontSize: 12, lineHeight: 1.5, marginTop: 4 }}>Same subscription set at Sign Up — toggle it on or off any time, then Save Changes.</p>
+                </div>
+              </label>
             </div>
           </div>
           {saveError && <p style={{ color: C.red, fontSize: 12, marginTop: -6, marginBottom: 12 }}>{saveError}</p>}
