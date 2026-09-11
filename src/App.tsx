@@ -2619,6 +2619,12 @@ function AuthPage({ onAuth, setPage, recoveryMode }: { onAuth: () => void; setPa
         email: form.email,
         password: form.password,
         options: {
+          // Without this, Supabase falls back to the Auth project's configured Site URL
+          // for the confirmation email's link -- which is currently stuck on an old
+          // localhost:3000 dev port (see resetPasswordForEmail below, which already does
+          // this correctly). window.location.origin makes it self-correct on whatever
+          // host/port actually served this page, dev or production.
+          emailRedirectTo: window.location.origin,
           data: {
             name: `${form.firstName.trim()} ${form.lastName.trim()}`.trim(),
             nickname: form.nickname.trim() || null,
