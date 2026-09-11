@@ -34,6 +34,7 @@ export interface PuzzleStowProfile {
   nickname: string | null
   use_nickname: boolean
   subscribed_to_news: boolean
+  role: string
   avatar: string | null
   avatar_content_type: string | null
   agreed_to_terms_at: string

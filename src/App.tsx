@@ -32,7 +32,7 @@ const C = {
   red: '#D6456F',
 } as const
 
-type Page = 'home' | 'figures' | 'rules' | 'lore' | 'play' | 'practice' | 'sandbox' | 'printplay' | 'auth' | 'profile' | 'devtest'
+type Page = 'home' | 'figures' | 'rules' | 'lore' | 'play' | 'practice' | 'sandbox' | 'printplay' | 'auth' | 'profile' | 'devtest' | 'admin'
 type Cells = [number, number][]
 
 interface Figure {
@@ -650,8 +650,8 @@ const HERO_CELLS = buildHeroCells()
 const HERO_CLOSED = new Set([10])
 
 // ── Nav ───────────────────────────────────────────────────────────────────────
-function Nav({ page, setPage, isLoggedIn, onSignOut }: {
-  page: Page; setPage: (p: Page) => void; isLoggedIn: boolean; onSignOut: () => void
+function Nav({ page, setPage, isLoggedIn, isAdmin, onSignOut }: {
+  page: Page; setPage: (p: Page) => void; isLoggedIn: boolean; isAdmin?: boolean; onSignOut: () => void
 }) {
   const [open, setOpen] = useState(false)
   const [musicOn, setMusicOn] = useState(false)
@@ -706,6 +706,11 @@ function Nav({ page, setPage, isLoggedIn, onSignOut }: {
           </button>
           {isLoggedIn ? (
             <>
+              {isAdmin && (
+                <button onClick={() => setPage('admin')}
+                  style={{ color: page === 'admin' ? C.cyan : C.steel, border: `1px solid ${page === 'admin' ? C.cyan : C.steelDim}50`, fontSize: 13, padding: '4px 14px' }}
+                  className="hover:text-deck hover:border-steel transition-all">Admin</button>
+              )}
               <button onClick={() => setPage('profile')}
                 style={{ color: page === 'profile' ? C.cyan : C.steel, border: `1px solid ${page === 'profile' ? C.cyan : C.steelDim}50`, fontSize: 13, padding: '4px 14px', display: 'flex', alignItems: 'center', gap: 6 }}
                 className="hover:text-deck hover:border-steel transition-all">
@@ -753,6 +758,9 @@ function Nav({ page, setPage, isLoggedIn, onSignOut }: {
             className="text-sm text-left">● Dev/Test</button>
           {isLoggedIn ? (
             <>
+              {isAdmin && (
+                <button onClick={() => { setPage('admin'); setOpen(false) }} style={{ color: page === 'admin' ? C.cyan : C.steel }} className="text-sm font-medium text-left">Admin</button>
+              )}
               <button onClick={() => { setPage('profile'); setOpen(false) }} style={{ color: page === 'profile' ? C.cyan : C.steel, display: 'flex', alignItems: 'center', gap: 8 }} className="text-sm font-medium text-left">
                 <UserIcon size={14} color={page === 'profile' ? C.cyan : C.steel} />
                 Profile
@@ -3350,6 +3358,319 @@ function ProfilePage({ session, profile, onProfileUpdated, profileLoading, profi
   )
 }
 
+// ── Admin Page — flexible/auxiliary site content, Administrator role only ─────
+// Config variables, music tracks, and news-line items are admin-entered data only at
+// this stage -- nothing here wires the music player or a public news ticker yet (both
+// still deferred per PuzzleStow_Site_Fix_Request_v3.md BACKLOG). Access is enforced
+// twice: this component hides the page from non-Administrators, and the
+// app_config/music_tracks/news_items RLS policies (is_admin()) refuse reads/writes
+// from anyone else regardless of what the client sends.
+function AdminPage({ session, profile }: { session: Session | null; profile: PuzzleStowProfile | null }) {
+  if (!session || !profile) {
+    return (
+      <div style={{ background: C.graphite, minHeight: '100vh', paddingTop: '3.5rem' }} className="flex items-center justify-center">
+        <p style={{ color: C.steel, fontSize: 14 }}>Sign in required.</p>
+      </div>
+    )
+  }
+  if (profile.role !== 'Administrator') {
+    return (
+      <div style={{ background: C.graphite, minHeight: '100vh', paddingTop: '3.5rem' }} className="flex items-center justify-center">
+        <p style={{ color: C.red, fontSize: 14 }}>This page is restricted to Administrators.</p>
+      </div>
+    )
+  }
+  return (
+    <div style={{ background: C.graphite, minHeight: '100vh', paddingTop: '3.5rem' }}>
+      <div className="max-w-4xl mx-auto px-4 md:px-6 py-14">
+        <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.14em' }} className="mb-3">ADMIN</p>
+        <h1 style={{ color: C.deck }} className="text-3xl font-bold mb-10">Site Content</h1>
+        <AdminConfigSection />
+        <AdminMusicSection />
+        <AdminNewsSection />
+      </div>
+    </div>
+  )
+}
+
+interface ConfigRow { key: string; value: string | null; description: string | null }
+
+function AdminConfigSection() {
+  const [rows, setRows] = useState<ConfigRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [savingKey, setSavingKey] = useState<string | null>(null)
+  const [newKey, setNewKey] = useState('')
+  const [newValue, setNewValue] = useState('')
+  const [newDesc, setNewDesc] = useState('')
+  const [adding, setAdding] = useState(false)
+  const [addError, setAddError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setLoading(true)
+    setError(null)
+    supabase.from('app_config').select('key, value, description').order('key').then(({ data, error }) => {
+      setLoading(false)
+      if (error) { setError(error.message); return }
+      setRows((data as ConfigRow[]) ?? [])
+    })
+  }, [])
+
+  const updateRow = (key: string, patch: Partial<ConfigRow>) => setRows(rs => rs.map(r => (r.key === key ? { ...r, ...patch } : r)))
+
+  const save = async (key: string) => {
+    const row = rows.find(r => r.key === key)
+    if (!row) return
+    setSavingKey(key)
+    const { error } = await supabase.from('app_config')
+      .update({ value: row.value, description: row.description, updated_at: new Date().toISOString() })
+      .eq('key', key)
+    setSavingKey(null)
+    if (error) setError(error.message)
+  }
+
+  const remove = async (key: string) => {
+    const { error } = await supabase.from('app_config').delete().eq('key', key)
+    if (error) { setError(error.message); return }
+    setRows(rs => rs.filter(r => r.key !== key))
+  }
+
+  const add = async () => {
+    if (adding) return
+    const k = newKey.trim()
+    if (!k) { setAddError('Key is required'); return }
+    if (rows.some(r => r.key === k)) { setAddError('Key already exists'); return }
+    setAdding(true)
+    setAddError(null)
+    const { data, error } = await supabase.from('app_config')
+      .insert({ key: k, value: newValue.trim() || null, description: newDesc.trim() || null })
+      .select('key, value, description').single()
+    setAdding(false)
+    if (error) { setAddError(error.message); return }
+    setRows(rs => [...rs, data as ConfigRow].sort((a, b) => a.key.localeCompare(b.key)))
+    setNewKey(''); setNewValue(''); setNewDesc('')
+  }
+
+  const inp: React.CSSProperties = { background: C.graphite, border: `1px solid ${C.steelDim}`, color: C.deck, fontSize: 13, padding: '7px 10px', width: '100%', outline: 'none', fontFamily: 'inherit' }
+
+  return (
+    <div style={{ border: `1px solid ${C.cyan}28`, background: C.graphite2 }} className="p-6 mb-6">
+      <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.1em', marginBottom: 4 }}>CONFIG VARIABLES</p>
+      <p style={{ color: C.steelDim, fontSize: 12, marginBottom: 16 }}>Free-form key/value pairs for whatever needs parking without a schema change. Not yet read by any page.</p>
+      {loading ? <p style={{ color: C.steel, fontSize: 13 }}>Loading…</p> : (
+        <div className="flex flex-col gap-3 mb-4">
+          {rows.map(row => (
+            <div key={row.key} className="grid grid-cols-12 gap-2 items-start" style={{ borderBottom: `1px solid ${C.steelDim}20`, paddingBottom: 10 }}>
+              <div className="col-span-3" style={{ color: C.deck, fontFamily: "'JetBrains Mono',monospace", fontSize: 13, paddingTop: 7, wordBreak: 'break-all' }}>{row.key}</div>
+              <input className="col-span-4" style={inp} value={row.value ?? ''} onChange={e => updateRow(row.key, { value: e.target.value })} placeholder="value" />
+              <input className="col-span-3" style={inp} value={row.description ?? ''} onChange={e => updateRow(row.key, { description: e.target.value })} placeholder="description" />
+              <div className="col-span-2 flex gap-2">
+                <button onClick={() => save(row.key)} disabled={savingKey === row.key} style={{ color: C.cyan, fontSize: 12, border: `1px solid ${C.cyan}50`, padding: '6px 10px', background: `${C.cyan}10`, cursor: 'pointer' }}>{savingKey === row.key ? '…' : 'Save'}</button>
+                <button onClick={() => remove(row.key)} style={{ color: C.red, fontSize: 12, border: `1px solid ${C.red}50`, padding: '6px 10px', background: 'transparent', cursor: 'pointer' }}>Delete</button>
+              </div>
+            </div>
+          ))}
+          {rows.length === 0 && <p style={{ color: C.steelDim, fontSize: 13 }}>No config variables yet.</p>}
+        </div>
+      )}
+      {error && <p style={{ color: C.red, fontSize: 12, marginBottom: 10 }}>{error}</p>}
+      <div className="grid grid-cols-12 gap-2 items-start" style={{ borderTop: `1px solid ${C.steelDim}30`, paddingTop: 14 }}>
+        <input className="col-span-3" style={inp} value={newKey} onChange={e => setNewKey(e.target.value)} placeholder="key" />
+        <input className="col-span-4" style={inp} value={newValue} onChange={e => setNewValue(e.target.value)} placeholder="value" />
+        <input className="col-span-3" style={inp} value={newDesc} onChange={e => setNewDesc(e.target.value)} placeholder="description" />
+        <button onClick={add} disabled={adding} className="col-span-2" style={{ color: C.graphite, background: C.cyan, fontSize: 12, fontWeight: 600, padding: '7px 10px', border: 'none', cursor: adding ? 'default' : 'pointer', opacity: adding ? 0.6 : 1 }}>{adding ? '…' : 'Add'}</button>
+      </div>
+      {addError && <p style={{ color: C.red, fontSize: 12, marginTop: 8 }}>{addError}</p>}
+    </div>
+  )
+}
+
+interface MusicTrackRow { id: string; title: string; url: string | null; page: string | null; is_current: boolean; sort_order: number }
+
+function AdminMusicSection() {
+  const [rows, setRows] = useState<MusicTrackRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [savingId, setSavingId] = useState<string | null>(null)
+  const [newTitle, setNewTitle] = useState('')
+  const [newUrl, setNewUrl] = useState('')
+  const [newPage, setNewPage] = useState('')
+  const [adding, setAdding] = useState(false)
+  const [addError, setAddError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setLoading(true)
+    setError(null)
+    supabase.from('music_tracks').select('id, title, url, page, is_current, sort_order').order('sort_order').then(({ data, error }) => {
+      setLoading(false)
+      if (error) { setError(error.message); return }
+      setRows((data as MusicTrackRow[]) ?? [])
+    })
+  }, [])
+
+  const updateRow = (id: string, patch: Partial<MusicTrackRow>) => setRows(rs => rs.map(r => (r.id === id ? { ...r, ...patch } : r)))
+
+  const save = async (id: string) => {
+    const row = rows.find(r => r.id === id)
+    if (!row) return
+    setSavingId(id)
+    const { error } = await supabase.from('music_tracks')
+      .update({ title: row.title, url: row.url, page: row.page || null, is_current: row.is_current, sort_order: row.sort_order, updated_at: new Date().toISOString() })
+      .eq('id', id)
+    setSavingId(null)
+    if (error) setError(error.message)
+  }
+
+  const remove = async (id: string) => {
+    const { error } = await supabase.from('music_tracks').delete().eq('id', id)
+    if (error) { setError(error.message); return }
+    setRows(rs => rs.filter(r => r.id !== id))
+  }
+
+  const add = async () => {
+    if (adding) return
+    if (!newTitle.trim()) { setAddError('Title is required'); return }
+    setAdding(true)
+    setAddError(null)
+    const { data, error } = await supabase.from('music_tracks')
+      .insert({ title: newTitle.trim(), url: newUrl.trim() || null, page: newPage.trim() || null, sort_order: rows.length })
+      .select('id, title, url, page, is_current, sort_order').single()
+    setAdding(false)
+    if (error) { setAddError(error.message); return }
+    setRows(rs => [...rs, data as MusicTrackRow])
+    setNewTitle(''); setNewUrl(''); setNewPage('')
+  }
+
+  const inp: React.CSSProperties = { background: C.graphite, border: `1px solid ${C.steelDim}`, color: C.deck, fontSize: 13, padding: '7px 10px', width: '100%', outline: 'none', fontFamily: 'inherit' }
+  const Toggle = ({ on, onClick }: { on: boolean; onClick: () => void }) => (
+    <div onClick={onClick} style={{ width: 18, height: 18, border: `1.5px solid ${on ? C.cyan : C.steelDim}`, background: on ? C.cyan : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+      {on && <svg width={10} height={10} viewBox="0 0 10 10" fill="none" stroke={C.graphite} strokeWidth={2}><polyline points="1.5,5 4,7.5 8.5,2.5" /></svg>}
+    </div>
+  )
+
+  return (
+    <div style={{ border: `1px solid ${C.cyan}28`, background: C.graphite2 }} className="p-6 mb-6">
+      <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.1em', marginBottom: 4 }}>MUSIC TRACKS</p>
+      <p style={{ color: C.steelDim, fontSize: 12, marginBottom: 16 }}>Which track is assigned to which page, and which one is current. Not yet wired to a real player.</p>
+      {loading ? <p style={{ color: C.steel, fontSize: 13 }}>Loading…</p> : (
+        <div className="flex flex-col gap-3 mb-4">
+          {rows.map(row => (
+            <div key={row.id} className="grid grid-cols-12 gap-2 items-center" style={{ borderBottom: `1px solid ${C.steelDim}20`, paddingBottom: 10 }}>
+              <input className="col-span-3" style={inp} value={row.title} onChange={e => updateRow(row.id, { title: e.target.value })} placeholder="title" />
+              <input className="col-span-4" style={inp} value={row.url ?? ''} onChange={e => updateRow(row.id, { url: e.target.value })} placeholder="audio URL" />
+              <input className="col-span-2" style={inp} value={row.page ?? ''} onChange={e => updateRow(row.id, { page: e.target.value })} placeholder="page" />
+              <div className="col-span-1 flex justify-center"><Toggle on={row.is_current} onClick={() => updateRow(row.id, { is_current: !row.is_current })} /></div>
+              <div className="col-span-2 flex gap-2 justify-end">
+                <button onClick={() => save(row.id)} disabled={savingId === row.id} style={{ color: C.cyan, fontSize: 12, border: `1px solid ${C.cyan}50`, padding: '6px 10px', background: `${C.cyan}10`, cursor: 'pointer' }}>{savingId === row.id ? '…' : 'Save'}</button>
+                <button onClick={() => remove(row.id)} style={{ color: C.red, fontSize: 12, border: `1px solid ${C.red}50`, padding: '6px 10px', background: 'transparent', cursor: 'pointer' }}>Delete</button>
+              </div>
+            </div>
+          ))}
+          {rows.length === 0 && <p style={{ color: C.steelDim, fontSize: 13 }}>No tracks yet.</p>}
+        </div>
+      )}
+      {error && <p style={{ color: C.red, fontSize: 12, marginBottom: 10 }}>{error}</p>}
+      <div className="grid grid-cols-12 gap-2 items-center" style={{ borderTop: `1px solid ${C.steelDim}30`, paddingTop: 14 }}>
+        <input className="col-span-3" style={inp} value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="title" />
+        <input className="col-span-4" style={inp} value={newUrl} onChange={e => setNewUrl(e.target.value)} placeholder="audio URL" />
+        <input className="col-span-2" style={inp} value={newPage} onChange={e => setNewPage(e.target.value)} placeholder="page (optional)" />
+        <button onClick={add} disabled={adding} className="col-span-3" style={{ color: C.graphite, background: C.cyan, fontSize: 12, fontWeight: 600, padding: '7px 10px', border: 'none', cursor: adding ? 'default' : 'pointer', opacity: adding ? 0.6 : 1 }}>{adding ? '…' : 'Add track'}</button>
+      </div>
+      {addError && <p style={{ color: C.red, fontSize: 12, marginTop: 8 }}>{addError}</p>}
+    </div>
+  )
+}
+
+interface NewsItemRow { id: string; message: string; is_active: boolean; sort_order: number }
+
+function AdminNewsSection() {
+  const [rows, setRows] = useState<NewsItemRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [savingId, setSavingId] = useState<string | null>(null)
+  const [newMessage, setNewMessage] = useState('')
+  const [adding, setAdding] = useState(false)
+  const [addError, setAddError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setLoading(true)
+    setError(null)
+    supabase.from('news_items').select('id, message, is_active, sort_order').order('sort_order').then(({ data, error }) => {
+      setLoading(false)
+      if (error) { setError(error.message); return }
+      setRows((data as NewsItemRow[]) ?? [])
+    })
+  }, [])
+
+  const updateRow = (id: string, patch: Partial<NewsItemRow>) => setRows(rs => rs.map(r => (r.id === id ? { ...r, ...patch } : r)))
+
+  const save = async (id: string) => {
+    const row = rows.find(r => r.id === id)
+    if (!row) return
+    setSavingId(id)
+    const { error } = await supabase.from('news_items')
+      .update({ message: row.message, is_active: row.is_active, sort_order: row.sort_order, updated_at: new Date().toISOString() })
+      .eq('id', id)
+    setSavingId(null)
+    if (error) setError(error.message)
+  }
+
+  const remove = async (id: string) => {
+    const { error } = await supabase.from('news_items').delete().eq('id', id)
+    if (error) { setError(error.message); return }
+    setRows(rs => rs.filter(r => r.id !== id))
+  }
+
+  const add = async () => {
+    if (adding) return
+    if (!newMessage.trim()) { setAddError('Message is required'); return }
+    setAdding(true)
+    setAddError(null)
+    const { data, error } = await supabase.from('news_items')
+      .insert({ message: newMessage.trim(), sort_order: rows.length })
+      .select('id, message, is_active, sort_order').single()
+    setAdding(false)
+    if (error) { setAddError(error.message); return }
+    setRows(rs => [...rs, data as NewsItemRow])
+    setNewMessage('')
+  }
+
+  const inp: React.CSSProperties = { background: C.graphite, border: `1px solid ${C.steelDim}`, color: C.deck, fontSize: 13, padding: '7px 10px', width: '100%', outline: 'none', fontFamily: 'inherit' }
+
+  return (
+    <div style={{ border: `1px solid ${C.cyan}28`, background: C.graphite2 }} className="p-6">
+      <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.1em', marginBottom: 4 }}>NEWS LINE</p>
+      <p style={{ color: C.steelDim, fontSize: 12, marginBottom: 16 }}>Items for the news-line ticker. Not yet displayed on any public page.</p>
+      {loading ? <p style={{ color: C.steel, fontSize: 13 }}>Loading…</p> : (
+        <div className="flex flex-col gap-3 mb-4">
+          {rows.map(row => (
+            <div key={row.id} className="grid grid-cols-12 gap-2 items-center" style={{ borderBottom: `1px solid ${C.steelDim}20`, paddingBottom: 10 }}>
+              <input className="col-span-7" style={inp} value={row.message} onChange={e => updateRow(row.id, { message: e.target.value })} placeholder="message" />
+              <input className="col-span-1" type="number" style={inp} value={row.sort_order} onChange={e => updateRow(row.id, { sort_order: Number(e.target.value) })} />
+              <div className="col-span-1 flex justify-center">
+                <div onClick={() => updateRow(row.id, { is_active: !row.is_active })} style={{ width: 18, height: 18, border: `1.5px solid ${row.is_active ? C.cyan : C.steelDim}`, background: row.is_active ? C.cyan : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                  {row.is_active && <svg width={10} height={10} viewBox="0 0 10 10" fill="none" stroke={C.graphite} strokeWidth={2}><polyline points="1.5,5 4,7.5 8.5,2.5" /></svg>}
+                </div>
+              </div>
+              <div className="col-span-3 flex gap-2 justify-end">
+                <button onClick={() => save(row.id)} disabled={savingId === row.id} style={{ color: C.cyan, fontSize: 12, border: `1px solid ${C.cyan}50`, padding: '6px 10px', background: `${C.cyan}10`, cursor: 'pointer' }}>{savingId === row.id ? '…' : 'Save'}</button>
+                <button onClick={() => remove(row.id)} style={{ color: C.red, fontSize: 12, border: `1px solid ${C.red}50`, padding: '6px 10px', background: 'transparent', cursor: 'pointer' }}>Delete</button>
+              </div>
+            </div>
+          ))}
+          {rows.length === 0 && <p style={{ color: C.steelDim, fontSize: 13 }}>No news items yet.</p>}
+        </div>
+      )}
+      {error && <p style={{ color: C.red, fontSize: 12, marginBottom: 10 }}>{error}</p>}
+      <div className="flex gap-2" style={{ borderTop: `1px solid ${C.steelDim}30`, paddingTop: 14 }}>
+        <input style={{ ...inp, flex: 1 }} value={newMessage} onChange={e => setNewMessage(e.target.value)} placeholder="new news item message" />
+        <button onClick={add} disabled={adding} style={{ color: C.graphite, background: C.cyan, fontSize: 12, fontWeight: 600, padding: '7px 16px', border: 'none', cursor: adding ? 'default' : 'pointer', opacity: adding ? 0.6 : 1 }}>{adding ? '…' : 'Add'}</button>
+      </div>
+      {addError && <p style={{ color: C.red, fontSize: 12, marginTop: 8 }}>{addError}</p>}
+    </div>
+  )
+}
+
 // ── Dev/Test Environment Page — TO_DO.docx items 6-8 (2026-09-06) ─────────────
 // Not a public game mode: a harness for exercising the rules/opponent engine
 // (src/engine/rules.ts, src/engine/opponentEngine.ts) while a real backend
@@ -4093,7 +4414,7 @@ export default function App() {
 
   return (
     <div style={{ background: C.graphite, minHeight: '100vh' }}>
-      <Nav page={page} setPage={setPage} isLoggedIn={isLoggedIn} onSignOut={() => { supabase.auth.signOut() }} />
+      <Nav page={page} setPage={setPage} isLoggedIn={isLoggedIn} isAdmin={profile?.role === 'Administrator'} onSignOut={() => { supabase.auth.signOut() }} />
       {authNotice && (
         <div style={{ background: `${C.cyan}18`, borderBottom: `1px solid ${C.cyan}40`, color: C.cyan, fontSize: 13, padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, position: 'relative' }}>
           <span>{authNotice}</span>
@@ -4118,6 +4439,7 @@ export default function App() {
       {page === 'printplay' && <PrintPlayPage />}
       {page === 'profile'   && <ProfilePage session={session} profile={profile} onProfileUpdated={setProfile} profileLoading={profileLoading} profileError={profileError} onRetryProfile={() => setProfileRefreshKey(k => k + 1)} />}
       {page === 'devtest'   && <DevTestPage />}
+      {page === 'admin'     && <AdminPage session={session} profile={profile} />}
     </div>
   )
 }
