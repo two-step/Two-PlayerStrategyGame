@@ -25,7 +25,7 @@
 //    note at the bottom on why that matters for future exposure.
 
 import type { FigureDef, Cells } from './rules'
-import { enumeratePlacements, scorePlacement } from './rules'
+import { enumeratePlacements, scorePlacement, computeDeadCells, cellKey } from './rules'
 
 export type Difficulty = 'easy' | 'medium' | 'hard'
 
@@ -103,6 +103,19 @@ function orderCandidatesLikeAHuman(candidates: Cells[]): Cells[] {
 // takes whichever is actually better, hard evaluates every legal placement and takes
 // the single best -- still a static, one-ply score, never a simulation of future
 // moves.
+// Filters out any candidate that grows the dead-cell count beyond what it already
+// is -- i.e. drops placements that wall off previously-reachable cells for no
+// immediate row/column payoff. Falls back to the full candidate list only when
+// literally every legal placement creates new dead cells (unavoidable).
+function filterOutDeadCellCreatingPlacements(candidates: Cells[], filled: Set<string>, rows: number): Cells[] {
+  const baseline = computeDeadCells(filled, rows).size
+  return candidates.filter(cells => {
+    const next = new Set(filled)
+    cells.forEach(([r, c]) => next.add(cellKey(r, c)))
+    return computeDeadCells(next, rows).size <= baseline
+  })
+}
+
 function pickByTier(difficulty: Difficulty, ordered: Cells[], filled: Set<string>, rows: number): Cells {
   if (difficulty === 'easy') return ordered[0]
   if (difficulty === 'medium') {
@@ -132,7 +145,15 @@ export function createOpponentEngine(config: EngineConfig): OpponentEngine {
     decidePlacement(figure, filled, rows) {
       const candidates = enumeratePlacements(figure, filled, rows)
       if (!candidates.length) return { kind: 'pass', message: pick(PHRASES.noMove) }
-      const ordered = orderCandidatesLikeAHuman(candidates)
+      // Baseline "skill" applied to EVERY difficulty, including easy (which otherwise
+      // just grabs ordered[0] with no scoring at all): never seal off a cell that was
+      // still reachable, unless every legal placement does. Pure geometry via
+      // computeDeadCells (no figure-availability reasoning) -- this is what stops the
+      // "figure 27 jammed into the corner, walling off two cells for nothing" move the
+      // owner flagged, at every skill level, not just medium/hard.
+      const nonDeadCreating = filterOutDeadCellCreatingPlacements(candidates, filled, rows)
+      const pool = nonDeadCreating.length ? nonDeadCreating : candidates
+      const ordered = orderCandidatesLikeAHuman(pool)
       const chosen = pickByTier(config.difficulty, ordered, filled, rows)
       return { kind: 'place', cells: chosen, message: pick(PHRASES.moved) }
     },

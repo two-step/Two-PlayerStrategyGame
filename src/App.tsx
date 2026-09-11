@@ -165,8 +165,8 @@ function pickLabelCellIdx(cells: Cells, dotIdx: number[]): number {
 // ── FigurePreview — uniform CELL_PX across all figures ───────────────────────
 const CELL_PX = 14
 
-function FigurePreview({ cells, cardSize = 72, color = C.cyan, cellPx = CELL_PX, dots = [], number, showNumber = true }: {
-  cells: Cells; cardSize?: number; color?: string; cellPx?: number; dots?: number[]; number?: number | string; showNumber?: boolean
+function FigurePreview({ cells, cardSize = 72, color = C.cyan, cellPx = CELL_PX, dots = [], number, showNumber = true, responsive = false }: {
+  cells: Cells; cardSize?: number; color?: string; cellPx?: number; dots?: number[]; number?: number | string; showNumber?: boolean; responsive?: boolean
 }) {
   if (!cells.length) return null
   const rows = cells.map(([r]) => r), cols = cells.map(([, c]) => c)
@@ -192,7 +192,11 @@ function FigurePreview({ cells, cardSize = 72, color = C.cyan, cellPx = CELL_PX,
   const numX = ox + (labelC - minC) * fitCellPx + fitCellPx / 2
   const numY = oy + (labelR - minR) * fitCellPx + fitCellPx / 2
   return (
-    <svg width={cardSize} height={cardSize} style={{ display: 'block', flexShrink: 0 }}>
+    <svg
+      {...(responsive
+        ? { viewBox: `0 0 ${cardSize} ${cardSize}`, preserveAspectRatio: 'xMidYMid meet', style: { display: 'block', width: '100%', height: '100%' } }
+        : { width: cardSize, height: cardSize, style: { display: 'block', flexShrink: 0 } })}
+    >
       {cells.map(([r, c], i) => (
         <rect key={i}
           x={ox + (c - minC) * fitCellPx + 0.75} y={oy + (r - minR) * fitCellPx + 0.75}
@@ -208,7 +212,7 @@ function FigurePreview({ cells, cardSize = 72, color = C.cyan, cellPx = CELL_PX,
       {canShowNumber && (
         <text x={numX} y={numY} textAnchor="middle" dominantBaseline="central"
           fontFamily="'JetBrains Mono',monospace" fontSize={fontSize} fontWeight={700}
-          fill={C.deck} style={{ paintOrder: 'stroke', stroke: color, strokeWidth: fontSize * 0.3 }}>
+          fill={C.deck} style={{ paintOrder: 'stroke', stroke: C.graphite, strokeWidth: Math.max(1, fontSize * 0.12) }}>
           {number}
         </text>
       )}
@@ -1168,12 +1172,14 @@ function FiguresPage() {
         <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.14em' }} className="mb-3">FIGURE CATALOG</p>
         <h1 style={{ color: C.deck }} className="text-3xl font-bold mb-3">All 27 Figures</h1>
         <p style={{ color: C.steel }} className="text-sm mb-10 max-w-xl">Sizes 1 to 7 cells. Figure #25 is the only 7-cell piece (Heptomino-H). Click any figure to see all valid orientations.</p>
-        <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-9 gap-2 mb-8">
+        <div className="grid grid-cols-9 gap-2 mb-8">
           {FIGURES.map(fig => (
             <button key={fig.id} onClick={() => { setSelected(fig); setOrientation(0) }}
               style={{ border: `1px solid ${selected?.id === fig.id ? C.cyan : `${C.cyan}22`}`, background: selected?.id === fig.id ? `${C.cyan}18` : C.graphite2, transition: 'all 0.15s' }}
               className="aspect-square flex flex-col items-center justify-center gap-1 p-2 hover:border-cyan-400/60">
-              <FigurePreview cells={fig.cells} cardSize={68} color={selected?.id === fig.id ? C.cyan : `${C.cyan}90`} dots={fig.dots} number={fig.id} />
+              <div className="flex-1 min-h-0 w-full flex items-center justify-center">
+                <FigurePreview cells={fig.cells} cardSize={92} cellPx={19} responsive color={selected?.id === fig.id ? C.cyan : `${C.cyan}90`} dots={fig.dots} number={fig.id} />
+              </div>
               <span style={{ color: selected?.id === fig.id ? C.cyan : C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 8 }}>{fig.label}</span>
             </button>
           ))}

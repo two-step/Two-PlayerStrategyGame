@@ -1,0 +1,14 @@
+{
+   "author" : "",
+   "description" : "",
+   "keywords" : [],
+   "license" : "ISC",
+   "main" : "server.js",
+   "name" : "puzzlestow.com",
+   "scripts" : {
+      "ispmanager-custom-command" : "figma-make-app@1.0.0 dev",
+      "start" : "node server.js"
+   },
+   "type" : "commonjs",
+   "version" : "1.0.0"
+}
