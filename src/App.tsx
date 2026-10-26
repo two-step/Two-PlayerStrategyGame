@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, type CSSProperties } from 'react'
-import { parseNotation, formatNotation, computePlacementFromDots, computePlacementFromAnchor, checkPlacement, closedRows, closedCols, computeDeadCells, cellKey, canPlaceAnywhere, rowToLetter } from './engine/rules'
+import { parseNotation, formatNotation, computePlacementFromDots, computePlacementFromAnchor, checkPlacement, closedRows, closedCols, computeDeadCells, cellKey, canPlaceAnywhere, rowToLetter, hasReturnPath } from './engine/rules'
 import { createOpponentEngine, type Difficulty } from './engine/opponentEngine'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
@@ -3793,6 +3793,11 @@ function DevTestPage() {
   const [gameOver, setGameOver] = useState<string | null>(null)
   const [log, setLog] = useState<{ id: number; t: number; text: string }[]>([])
   const [showInternals, setShowInternals] = useState(false)
+  // Fair-play tallies, TO_DO 44c: IN = fair-play requests you RECEIVED from the opponent
+  // (decisions you made), OUT = requests you SENT (decisions the opponent made). Each
+  // counts APPROVED / DECLINED per the game protocol, for later per-player statistics.
+  const [fairPlayIn, setFairPlayIn] = useState({ approved: 0, declined: 0 })
+  const [fairPlayOut, setFairPlayOut] = useState({ approved: 0, declined: 0 })
   const logIdRef = useRef(0)
   // When the figure currently incoming to YOU was requested — start of the "time spent on
   // load" window the log reports for your placements.
@@ -4142,6 +4147,15 @@ function DevTestPage() {
       if (result.needsFairPlay) {
         const fp = engine.respondToFairPlay(result.overhangRatio ?? 0)
         pushLog(`Fair-play check (${Math.round((result.overhangRatio ?? 0) * 100)}% unsupported): opponent says "${fp.message}"`)
+        // 44c: this is an OUTGOING fair-play request (yours) — the opponent's APPROVED /
+        // DECLINED verdict counts into your OUT tally immediately, exactly per the
+        // protocol (APPROVED QTY / DECLINED QTY), even if you then place elsewhere.
+        // Counted once per request: the pendingFairPlay key guards the resubmit.
+        if (pendingFairPlay?.key !== cellsKey) {
+          setFairPlayOut(o => fp.kind === 'fair_play_response' && fp.approve
+            ? { ...o, approved: o.approved + 1 }
+            : { ...o, declined: o.declined + 1 })
+        }
         if (fp.kind === 'fair_play_response' && fp.approve && cellsKey != null) {
           setPendingFairPlay({ key: cellsKey })
           setResponse(`${result.reason} — opponent agreed via fair play. Submit again to confirm.`)
@@ -4177,6 +4191,17 @@ function DevTestPage() {
     const nowClosed = rowsAfter.size + colsAfter.size
     const placedAt = Date.now()
     logPlacement('You', incomingFig, result.cells!, placedAt, placedAt - requestedAtRef.current, newlyClosed, nowClosed, closedOppTotal)
+    // TO_DO 44d: after placing, the loader must still be able to walk back to the A0 exit
+    // under the same ≤3-step rule; if not, the player LOSES — the move itself was legal
+    // (44e: the system doesn't second-guess a rules-legal placement), the sealed exit is
+    // the player's own doing. Score per Official_Rules end-variant: loser keeps the rows
+    // closed so far, winner gets 5.
+    if (!hasReturnPath(next, DEV_ROWS, result.cells!)) {
+      const msg = 'You lose — this load sealed your way back to the container exit (rule: the loader must be able to return to A0).'
+      logGameEnd(msg, closedYouTotal, 5)
+      setGameOver(msg)
+      return
+    }
     if (nowClosed >= 5) { logGameEnd('You win — 5 rows/columns closed.', nowClosed, closedOppTotal); setGameOver('You win — 5 rows/columns closed.'); return }
     if (usedForYou.size >= 27 && usedForOpp.size >= 27) {
       const finalMsg = nowClosed === closedOppTotal ? 'Draw — all 27 figures placed, equal rows/columns closed.'
@@ -4196,6 +4221,7 @@ function DevTestPage() {
     setLastRequestToYou(null); setLastRequestToOpp(null); setRotIdx(0); setNotation('')
     setPendingFairPlay(null); setGameOver(null); setLog([])
     setMoveRecords([]); setGameStartInfo(null); setGameEndInfo(null)
+    setFairPlayIn({ approved: 0, declined: 0 }); setFairPlayOut({ approved: 0, declined: 0 })
     setResponse('Flip the coin to decide who requests first.')
   }
 
@@ -4366,7 +4392,10 @@ function DevTestPage() {
         <div style={{ border: `1px solid ${C.steelDim}25`, background: C.graphite2 }} className="p-5">
           <div className="flex items-center justify-between mb-2 gap-3 flex-wrap">
             <p style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>LOG</p>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 flex-wrap">
+              <span style={{ color: C.steel, fontFamily: "'JetBrains Mono',monospace", fontSize: 10 }} title="Fair-play requests (TO_DO 44c): IN = received from the opponent, OUT = sent by you — approved/declined per the game protocol">
+                FAIR PLAY — IN {fairPlayIn.approved}✓/{fairPlayIn.declined}✗ · OUT {fairPlayOut.approved}✓/{fairPlayOut.declined}✗
+              </span>
               <button onClick={exportGameReportPdf} disabled={!moveRecords.length}
                 style={{ color: moveRecords.length ? C.cyan : C.steelDim, fontSize: 10, fontFamily: "'JetBrains Mono',monospace", textDecoration: 'underline', opacity: moveRecords.length ? 1 : 0.4, cursor: moveRecords.length ? 'pointer' : 'default' }}>
                 Export (PDF)

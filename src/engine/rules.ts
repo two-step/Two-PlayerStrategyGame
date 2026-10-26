@@ -615,32 +615,76 @@ export function hasDeliveryRoute(filled: Set<string>, rows: number): boolean {
   return reachableCells(filled, rows).size > 0
 }
 
-// deadCells (see computeDeadCells below) count as "occupied" for closure purposes —
-// TO_DO.docx spec: cells that are unfillable in principle get marked X and still let
-// the row/column they sit in close once every other cell is real cargo.
+// TO_DO 44d: «После расположения груза игрок-грузчик должен иметь возможность вернуться
+// к выходу контейнера, соблюдая всё то же правило высоты ступеней. Если это невозможно –
+// игроку засчитывается поражение.»
+//
+// Where the loader STANDS after placing: on top of the cargo he just set down — the
+// empty cell directly above the placement's topmost cell in each of its columns. He
+// walks out over the same ≤3-step terrain the delivery model already encodes (the step
+// rule is symmetric up/down), so the question "can he get back to the A0 entrance" is
+// exactly "is the run above the cargo still reachable from column 0" — reachableCells
+// on the POST-placement board. The classic self-seal (climb a staircase in, place the
+// load that walls off the gap you climbed through) kills exactly that run's
+// reachability, so it's caught; a placement on the open floor is always fine.
+//
+// `cells` = the just-placed cargo. If a placement column runs all the way to the
+// container's top there is no cell above it to stand on — the loader placed it from a
+// neighboring column's run, so those columns contribute no standing spot of their own
+// (approximation: the neighbor's own run governs its own reachability, checked when
+// THAT placement happens; nothing extra invented here).
+export function hasReturnPath(filled: Set<string>, rows: number, cells?: Cells): boolean {
+  const reachable = reachableCells(filled, rows)
+  // Group the placement's topmost cell per column.
+  const topByCol = new Map<number, number>()
+  for (const [r, c] of cells ?? []) {
+    const cur = topByCol.get(c)
+    if (cur === undefined || r < cur) topByCol.set(c, r)
+  }
+  let standingSpots = 0
+  for (const [c, top] of topByCol) {
+    if (top === 0) continue // touches the ceiling — no standing spot in this column
+    standingSpots++
+    if (reachable.has(cellKey(top - 1, c))) return true
+  }
+  // No standing spot at all (floor-to-ceiling placement in every column): the loader
+  // was never on top of this cargo, so this placement can't be the thing that trapped
+  // him — not sealed by this move.
+  return standingSpots === 0
+}
+
+// RULE FIX (TO_DO 44g, Official_Rules.docx «Ограничения»: «Пустоты в контейнере...
+// недоступные для дальнейшего заполнения, делают НЕВОЗМОЖНЫМ закрытие рядов, где они
+// находятся (в конечном счёте учитываются только ряды полностью закрытые без пробелов)»,
+// and sub-item 44g verbatim: «Ряд... отмечается закрытым, если все ячейки его заполнены
+// установленными фигурами БЕЗ присутствия в них «мёртвых» ячеек»): a dead/X cell in a
+// row/column makes that row/column UNCLOSEABLE, permanently. The previous version treated
+// dead cells as "occupied" so a row whose every live cell was real cargo plus one walled-in
+// X still counted as closed — the exact opposite of the canon. Dead cells now BLOCK closure.
 export function closedRows(filled: Set<string>, rows: number, deadCells?: Set<string>): Set<number> {
   const out = new Set<number>()
   for (let r = 0; r < rows; r++) {
     let full = true
     for (let c = 0; c < COLS; c++) {
       const key = cellKey(r, c)
-      if (!filled.has(key) && !deadCells?.has(key)) { full = false; break }
+      if (!filled.has(key) || deadCells?.has(key)) { full = false; break }
     }
     if (full) out.add(r)
   }
   return out
 }
 
-// Vertical counterpart of closedRows. TO_DO.docx bug (2026-09-07): only horizontal rows
-// were ever checked, so filling a full column never lit up green — the container is
-// meant to close on either orientation ("ряд" covers both per Sergey's brief).
+// Vertical counterpart of closedRows, same dead-cell rule (44g covers both orientations).
+// TO_DO.docx bug (2026-09-07): only horizontal rows were ever checked, so filling a full
+// column never lit up green — the container is meant to close on either orientation
+// ("ряд" covers both per Sergey's brief).
 export function closedCols(filled: Set<string>, rows: number, deadCells?: Set<string>): Set<number> {
   const out = new Set<number>()
   for (let c = 0; c < COLS; c++) {
     let full = true
     for (let r = 0; r < rows; r++) {
       const key = cellKey(r, c)
-      if (!filled.has(key) && !deadCells?.has(key)) { full = false; break }
+      if (!filled.has(key) || deadCells?.has(key)) { full = false; break }
     }
     if (full) out.add(c)
   }
@@ -715,6 +759,9 @@ export interface MoveResult {
   cells?: Cells
   overhangRatio?: number
   needsFairPlay?: boolean
+  // TO_DO 44d: the move itself is legal, but with it in place the loader can no longer
+  // walk back to the A0 exit under the ≤3-step rule — the UI declares the loss per 44d.
+  sealsExit?: boolean
 }
 
 // A placement cell is "vertically grounded" if it rests on the true floor, on
@@ -806,12 +853,20 @@ export function checkPlacement(cells: Cells | null, filled: Set<string>, rows: n
   if (oh > 0.5 && !fairPlayApproved) {
     return { ok: false, reason: `${Math.round(oh * 100)}% unsupported — needs fair-play confirmation from both players`, overhangRatio: oh, needsFairPlay: true, cells }
   }
+  // TO_DO 44d/44e (2026-10, "всё как в реале"): the system must NOT rescue the player from
+  // sealing off the return path. 44e verbatim: «Игроку разрешается располагать грузы
+  // согласно правилам. Дальнейшая возможность его действий на момент отгрузки фигуры-груза
+  // системой не рассматривается... Запер себя в контейнере, не можешь пройти к месту
+  // установки груза — проиграл.» The old hasDeliveryRoute rejection here removed a legal
+  // move that a real referee would allow (and the loss it causes would be the player's own).
+  // A move is legal if it is in-bounds, non-colliding, reachable, supported and not an
+  // unconfirmed >50% overhang; whether the player can still GET OUT afterwards is checked
+  // separately (hasReturnPath below) and reported as `sealsExit` so the UI can declare the
+  // 44d loss instead of silently refusing the move.
   const nextFilled = new Set(filled)
   cells.forEach(([r, c]) => nextFilled.add(cellKey(r, c)))
-  if (!hasDeliveryRoute(nextFilled, rows)) {
-    return { ok: false, reason: 'This placement seals the container — no further cargo could ever be delivered', overhangRatio: oh, cells }
-  }
-  return { ok: true, cells, overhangRatio: oh }
+  const returnPath = hasReturnPath(nextFilled, rows, cells)
+  return { ok: true, cells, overhangRatio: oh, sealsExit: !returnPath }
 }
 
 // Brute-force search used by "no legal placement = loss" and by the opponent
@@ -837,7 +892,10 @@ export function enumeratePlacements(figure: FigureDef, filled: Set<string>, rows
         if (oh > 0.5) continue // engine plays fair-play-clean moves only, by design
         const nextFilled = new Set(filled)
         cells.forEach(([rr, cc]) => nextFilled.add(cellKey(rr, cc)))
-        if (!hasDeliveryRoute(nextFilled, rows)) continue
+        // The engine is a competent player, not a rule: it never seals its own exit
+        // (44d) — and "sealing the exit" is the stricter, more accurate statement of
+        // the old hasDeliveryRoute filter, so the engine's move quality only improves.
+        if (!hasReturnPath(nextFilled, rows, cells)) continue
         out.push(cells)
       }
     }
@@ -890,8 +948,10 @@ export function scorePlacement(cells: Cells, filled: Set<string>, rows: number):
   // Extra nudge away from piling straight up at the entrance column (0,0/A0). avgDepth
   // and heightVariance already discourage tall, uneven stacks in general, but the
   // entrance specifically deserves to stay clear longer than "just don't fully seal
-  // it" (hasDeliveryRoute) -- a competent human builds outward from the far end of the
-  // floor row first, not straight up at the door.
+  // it" (hasReturnPath now filters those outright in enumeratePlacements — TO_DO 44d —
+  // so this is only a soft preference among already-exit-safe moves, as intended) --
+  // a competent human builds outward from the far end of the floor row first, not
+  // straight up at the door.
   const entranceHeight = afterHeights[0]
 
   return rowGain - avgDepth * 2 - heightVariance * 3 + touching * 5 - entranceHeight * 1.5 - deadPenalty
