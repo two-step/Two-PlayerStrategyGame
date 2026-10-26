@@ -954,5 +954,19 @@ export function scorePlacement(cells: Cells, filled: Set<string>, rows: number):
   // straight up at the door.
   const entranceHeight = afterHeights[0]
 
-  return rowGain - avgDepth * 2 - heightVariance * 3 + touching * 5 - entranceHeight * 1.5 - deadPenalty
+  // TO_DO 30: «Старается оставлять высоту ступеней <4 ячеек» — every adjacent-column
+  // pair whose height difference reaches the 4-cell step limit is terrain the opponent
+  // (and this engine itself) can no longer cross with a load, even though creating
+  // such a step is legal. Each >=4 step formed by THIS placement is penalized; the
+  // square (>=8) cases, which wall off a whole column band, are penalized harder
+  // because they split the container's floor into disconnected zones.
+  let stepCount = 0, wallCount = 0
+  for (let c = 0; c + 1 < COLS; c++) {
+    const diff = Math.abs(afterHeights[c] - afterHeights[c + 1])
+    if (diff >= 8) { wallCount++; stepCount++ }
+    else if (diff >= 4) stepCount++
+  }
+  const stepPenalty = stepCount * 60 + wallCount * 120
+
+  return rowGain - avgDepth * 2 - heightVariance * 3 + touching * 5 - entranceHeight * 1.5 - stepPenalty - deadPenalty
 }

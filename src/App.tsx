@@ -3918,6 +3918,18 @@ function DevTestPage() {
   }
 
   const availableFigures = FIGURES.filter(f => !usedForYou.has(f.id))
+  // TO_DO 30 engine planning context: the opponent engine reasons about which
+  // figures it might still receive/placement quality on its own board, and (hard
+  // level) about what it hands the human. ownAvailable/humanAvailable already
+  // exclude the used figure sets; the anti-repeat rule stays the caller's job
+  // (chooseFigureToRequest applies it to `available` itself).
+  const engineContext = useMemo(() => ({
+    rows: DEV_ROWS,
+    ownFilled: filledOpp,
+    ownAvailable: FIGURES.filter(f => !usedForOpp.has(f.id)),
+    humanFilled: filledYou,
+    humanAvailable: availableFigures,
+  }), [DEV_ROWS, filledOpp, usedForOpp, filledYou, availableFigures])
   const incomingFig = incomingFigId != null ? FIGURES.find(f => f.id === incomingFigId) ?? null : null
   const orientations = incomingFig ? getOrientations(incomingFig.cells) : []
   // Dead/X cells (TO_DO.docx, 2026-09-08): purely geometric — cells with no path of
@@ -4014,7 +4026,7 @@ function DevTestPage() {
     setUsedForOpp(prev => new Set(prev).add(fig.id))
     setLastRequestToOpp(fig.id)
     pushLog(`You request ${fig.label} for the opponent.`)
-    const decision = engine.decidePlacement(fig, filledOpp, DEV_ROWS)
+    const decision = engine.decidePlacement(fig, filledOpp, DEV_ROWS, engineContext)
     if (decision.kind === 'pass') {
       pushLog(`Opponent: ${decision.message}`)
       logPass('Opponent', `${fig.label} — no legal placement`, 5, closedOppTotal)
@@ -4053,7 +4065,7 @@ function DevTestPage() {
   // Opponent's turn to request a figure for you, whenever it becomes their turn.
   useEffect(() => {
     if (requester !== 'opp' || incomingFigId != null || gameOver) return
-    const decision = engine.chooseFigureToRequest(availableFigures, lastRequestToOpp)
+    const decision = engine.chooseFigureToRequest(availableFigures, lastRequestToOpp, engineContext)
     if (decision.kind !== 'request') return
     setUsedForYou(prev => new Set(prev).add(decision.figureId))
     setLastRequestToYou(decision.figureId)
