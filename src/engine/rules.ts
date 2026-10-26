@@ -619,37 +619,49 @@ export function hasDeliveryRoute(filled: Set<string>, rows: number): boolean {
 // к выходу контейнера, соблюдая всё то же правило высоты ступеней. Если это невозможно –
 // игроку засчитывается поражение.»
 //
-// Where the loader STANDS after placing: on top of the cargo he just set down — the
-// empty cell directly above the placement's topmost cell in each of its columns. He
-// walks out over the same ≤3-step terrain the delivery model already encodes (the step
-// rule is symmetric up/down), so the question "can he get back to the A0 entrance" is
-// exactly "is the run above the cargo still reachable from column 0" — reachableCells
-// on the POST-placement board. The classic self-seal (climb a staircase in, place the
-// load that walls off the gap you climbed through) kills exactly that run's
-// reachability, so it's caught; a placement on the open floor is always fine.
+// Where the loader STANDS after placing: on top of the cargo pile in each column the
+// placement touched — the empty cell directly above the column's TOPMOST FILLED cell
+// (post-placement), not merely above the placement's own top cell. The old version
+// checked the cell above the figure itself, but an overhang/pocket placement (fair-play
+// or notch fill) can put the figure UNDER pre-existing cargo in the same column: that
+// cell above the figure is already occupied and can never be "reachable", so every such
+// placement was falsely reported as sealing the exit (reported live, 2026-10-26 report:
+// F02 domino slid under F22's overhang at C7 — engine demanded a return path through
+// the solid C7 cell while the real standing spot, D7 on top of the whole stack, was
+// plainly open). He walks out over the same ≤3-step terrain the delivery model already
+// encodes (the step rule is symmetric up/down), so the question "can he get back to the
+// A0 entrance" is exactly "is the run above the column's stack top still reachable from
+// column 0" — reachableCells on the POST-placement board. The classic self-seal (climb
+// a staircase in, place the load that walls off the gap you climbed through) kills
+// exactly that run's reachability, so it's caught; a placement on the open floor is
+// always fine.
 //
-// `cells` = the just-placed cargo. If a placement column runs all the way to the
-// container's top there is no cell above it to stand on — the loader placed it from a
-// neighboring column's run, so those columns contribute no standing spot of their own
-// (approximation: the neighbor's own run governs its own reachability, checked when
-// THAT placement happens; nothing extra invented here).
+// `cells` = the just-placed cargo (its columns are the ones the loader worked in). If a
+// column's stack runs all the way to the container's top there is no cell above it to
+// stand on — the loader placed it from a neighboring column's run, so those columns
+// contribute no standing spot of their own (approximation: the neighbor's own run
+// governs its own reachability, checked when THAT placement happens; nothing extra
+// invented here).
 export function hasReturnPath(filled: Set<string>, rows: number, cells?: Cells): boolean {
   const reachable = reachableCells(filled, rows)
-  // Group the placement's topmost cell per column.
-  const topByCol = new Map<number, number>()
-  for (const [r, c] of cells ?? []) {
-    const cur = topByCol.get(c)
-    if (cur === undefined || r < cur) topByCol.set(c, r)
-  }
+  // Columns the placement touched.
+  const cols = new Set<number>()
+  for (const [, c] of cells ?? []) cols.add(c)
   let standingSpots = 0
-  for (const [c, top] of topByCol) {
-    if (top === 0) continue // touches the ceiling — no standing spot in this column
+  for (const c of cols) {
+    // Topmost filled cell in this column on the post-placement board = the stack top
+    // the loader stands on. Above it is, by construction, empty (or out of bounds).
+    let stackTop: number | null = null
+    for (let r = 0; r < rows; r++) {
+      if (filled.has(cellKey(r, c))) { stackTop = r; break }
+    }
+    if (stackTop === null || stackTop === 0) continue // empty column or stack touches the ceiling
     standingSpots++
-    if (reachable.has(cellKey(top - 1, c))) return true
+    if (reachable.has(cellKey(stackTop - 1, c))) return true
   }
-  // No standing spot at all (floor-to-ceiling placement in every column): the loader
-  // was never on top of this cargo, so this placement can't be the thing that trapped
-  // him — not sealed by this move.
+  // No standing spot at all (floor-to-ceiling stack in every touched column): the
+  // loader was never on top of this cargo, so this placement can't be the thing that
+  // trapped him — not sealed by this move.
   return standingSpots === 0
 }
 
