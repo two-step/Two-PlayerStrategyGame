@@ -619,49 +619,40 @@ export function hasDeliveryRoute(filled: Set<string>, rows: number): boolean {
 // к выходу контейнера, соблюдая всё то же правило высоты ступеней. Если это невозможно –
 // игроку засчитывается поражение.»
 //
-// Where the loader STANDS after placing: on top of the cargo pile in each column the
-// placement touched — the empty cell directly above the column's TOPMOST FILLED cell
-// (post-placement), not merely above the placement's own top cell. The old version
-// checked the cell above the figure itself, but an overhang/pocket placement (fair-play
-// or notch fill) can put the figure UNDER pre-existing cargo in the same column: that
-// cell above the figure is already occupied and can never be "reachable", so every such
-// placement was falsely reported as sealing the exit (reported live, 2026-10-26 report:
-// F02 domino slid under F22's overhang at C7 — engine demanded a return path through
-// the solid C7 cell while the real standing spot, D7 on top of the whole stack, was
-// plainly open). He walks out over the same ≤3-step terrain the delivery model already
-// encodes (the step rule is symmetric up/down), so the question "can he get back to the
-// A0 entrance" is exactly "is the run above the column's stack top still reachable from
-// column 0" — reachableCells on the POST-placement board. The classic self-seal (climb
-// a staircase in, place the load that walls off the gap you climbed through) kills
-// exactly that run's reachability, so it's caught; a placement on the open floor is
-// always fine.
+// Where the loader stands after placing: AT the spot he worked from, per Sergey
+// (2026-10-26, live report follow-up: «Обратный путь рассматриваем с места установки
+// груза» — the return path is considered from the PLACE OF PLACEMENT, not from atop
+// the stack). The loader sets the figure down while standing in the empty cell(s)
+// adjacent to it — the same cells the delivery-reachability model already says he
+// occupied to deliver it. So: the placement is "sealing" only if EVERY empty cell
+// orthogonally adjacent to the just-placed cargo (4-neighborhood, post-placement
+// board) is unreachable from the A0 entrance per reachableCells. If any neighbor cell
+// is reachable, the loader is standing (or can stand) right there and simply walks
+// back out over the same ≤3-step terrain (the step rule is symmetric up/down). The
+// classic self-seal (climb a staircase in, place the load that walls off the gap you
+// climbed through) kills exactly those adjacent cells' reachability, so it's caught;
+// a placement on the open floor always has an adjacent reachable cell.
 //
-// `cells` = the just-placed cargo (its columns are the ones the loader worked in). If a
-// column's stack runs all the way to the container's top there is no cell above it to
-// stand on — the loader placed it from a neighboring column's run, so those columns
-// contribute no standing spot of their own (approximation: the neighbor's own run
-// governs its own reachability, checked when THAT placement happens; nothing extra
-// invented here).
+// `cells` = the just-placed cargo. A cargo with NO empty orthogonal neighbor at all
+// (fully boxed in by filled cells / walls) contributed no standing spot the loader
+// could have used — not sealed by this move.
 export function hasReturnPath(filled: Set<string>, rows: number, cells?: Cells): boolean {
   const reachable = reachableCells(filled, rows)
-  // Columns the placement touched.
-  const cols = new Set<number>()
-  for (const [, c] of cells ?? []) cols.add(c)
   let standingSpots = 0
-  for (const c of cols) {
-    // Topmost filled cell in this column on the post-placement board = the stack top
-    // the loader stands on. Above it is, by construction, empty (or out of bounds).
-    let stackTop: number | null = null
-    for (let r = 0; r < rows; r++) {
-      if (filled.has(cellKey(r, c))) { stackTop = r; break }
+  for (const [r, c] of cells ?? []) {
+    // Empty cells orthogonally adjacent to the placed cargo — where the loader stands.
+    const neighbors: [number, number][] = [
+      [r - 1, c], [r + 1, c], [r, c - 1], [r, c + 1],
+    ]
+    for (const [nr, nc] of neighbors) {
+      if (nr < 0 || nr >= rows || nc < 0 || nc >= COLS) continue
+      if (filled.has(cellKey(nr, nc))) continue // not a standing spot — solid cargo
+      standingSpots++
+      if (reachable.has(cellKey(nr, nc))) return true
     }
-    if (stackTop === null || stackTop === 0) continue // empty column or stack touches the ceiling
-    standingSpots++
-    if (reachable.has(cellKey(stackTop - 1, c))) return true
   }
-  // No standing spot at all (floor-to-ceiling stack in every touched column): the
-  // loader was never on top of this cargo, so this placement can't be the thing that
-  // trapped him — not sealed by this move.
+  // No empty adjacent cell at all: the placement never offered the loader a spot at
+  // the place of installation, so it can't be the thing that trapped him.
   return standingSpots === 0
 }
 
