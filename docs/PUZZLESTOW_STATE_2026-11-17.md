@@ -20,9 +20,10 @@ Handoff-документ. Цель: любой новый чат стартуе�
 | Репозиторий сайта | `D:\4work\vc\PuzzleStow\Two-PlayerStrategyGame` (GitHub `two-step/Two-PlayerStrategyGame`, ветка `main`) |
 | Артефакты, TO_DO, спеки | `D:\4work\puzzlestow\artifacts` |
 | Память проекта (md, для агентов) | `D:\4work\puzzlestow\artifacts\Memory` |
-| Мобильный дизайн | `D:\4work\puzzlestow\mobile`; экспорт: `Claude outputs\mobile-design-export` в репо |
+| Мобильный дизайн | `D:\4work\puzzlestow\mobile` — финальный экспорт Claude Design готов к реализации (копия «Claude outputs» перенесена туда Sergey 2026-11-17, TO_DO 47) |
 | Вселенная / YouTube / Комиксы | `D:\4work\puzzlestow\Universe` / `...\YouTube` / `...\КОМИКСЫ` |
-| PairSec | `D:\4work\puzzlestow\PairSec` |
+| PairSec — отдельный проект | `D:\4work\PairSec` (на уровень выше puzzlestow; свой `TO_DO.docx`, спеки) |
+| Папка OSM/карты (пункты 41–42) | `D:\4work\puzzlestow\PairSec` — рабочая папка подготовки широкого использования карты в PairSec |
 | Геометрия фигур (единственный источник) | `otgruzka_figures.json` — в репо `src/imports/`, каноническая копия в artifacts |
 
 ## 2. Канон (не менять, читать в `Memory/project-rules-canonical.md`)
@@ -84,7 +85,10 @@ OPEN: 27 (Figma make app — остался `package.json` name + `vite.config.t
 28 (локализация с белорусского), 29 (музыка/админка/живучесть ссылок),
 **30 (движок — активная работа, см. §3)**, 31 (тест-страницу в игровую — часть работы 44/43/30),
 33 (новостная лента), 34 (телеграм-бот), 36 (архитектура мобильного), 40 (PrintPlay Kit),
-41 (OSM), 42 (карта адреса), **43 (таймеры — код готов и закоммичен `52bf368`; Sergey:
+41 (OSM — изучение как начало подготовки широкопланового использования карты в PairSec;
+рабочая папка `D:\4work\puzzlestow\PairSec`), 42 (карта адреса: адрес + longitude/latitude в
+БД, определение по тексту с корректировкой на карте — тоже как подготовка PairSec;
+для PuzzleStow это hobby: judges, consulters, leagues как группы, players TBD), **43 (таймеры — код готов и закоммичен `52bf368`; Sergey:
 в MVP скорее всего не войдут, лежат на тестовой странице и в Git)**,
 **44 (правила — правки внесены и закоммичены; регрессии PASS; canBridge описан в 44)**,
 45 (тесты ≥80% — vitest/eslint не настроены), 47 (мобильный дизайн готов к имплементации),

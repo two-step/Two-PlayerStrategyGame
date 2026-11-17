@@ -22,11 +22,12 @@ metadata:
 | Documents, memory, specs | `D:\4work\puzzlestow\artifacts` |
 | **Memory (md, for agents)** | `D:\4work\puzzlestow\artifacts\Memory` (indexed by `MEMORY.md`; pointer also in `AGENTS.md`) |
 | **Current handoff** | `D:\4work\puzzlestow\artifacts\PUZZLESTOW_STATE_2026-11-17.md` (copy at repo `docs/PUZZLESTOW_STATE_2026-11-17.md`) |
-| Mobile design (Claude Design) | `D:\4work\puzzlestow\mobile` (export: `D:\4work\vc\PuzzleStow\Two-PlayerStrategyGame\Claude outputs\mobile-design-export`) |
+| **Mobile design — FINAL export, ready for implementation (TO_DO 47)** | `D:\4work\puzzlestow\mobile` («Claude outputs» copied there by Sergey 2026-11-17) + `mobile/Claude_Design_pack/` |
 | «Лодары» universe | `D:\4work\puzzlestow\Universe` |
 | YouTube strategy | `D:\4work\puzzlestow\YouTube` |
 | Comics | `D:\4work\puzzlestow\КОМИКСЫ` |
-| PairSec (being created) | `D:\4work\puzzlestow\PairSec` |
+| **PairSec — separate product** | `D:\4work\PairSec` (one level ABOVE puzzlestow; has its own `TO_DO.docx` and specs) |
+| OSM/map work folder (TO_DO 41–42) | `D:\4work\puzzlestow\PairSec` — workspace for preparing wide map usage in PairSec |
 
 **Repo:** private GitHub `two-step/Two-PlayerStrategyGame`, branch `main` — `https://github.com/two-step/Two-PlayerStrategyGame`. It was **inaccessible via web_fetch or GitHub MCP in past sessions**; git and the sources are local — prefer that.
 
