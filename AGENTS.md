@@ -1,41 +1,85 @@
-# figma-make-app
+# PuzzleStow — агентские инструкции
 
-React + Vite + Tailwind CSS project running inside Figma Make.
+Единственный источник инструкций для агентов (Claude Code, Copilot и др.).
+`CLAUDE.md` — только однострочная ссылка `@AGENTS.md`; дублировать контент туда нельзя.
 
-## Development Server
+## 1. Проект
 
-A Vite development server is **already running** on `$PORT` (default 8443). You don't need to start it manually.
+**PuzzleStow** — двухпользовательская стратегическая игра-«упаковка» во вселенной Лодараў (Лодары): игроки по очереди размещают 27 фигур (1–7 клеток) в контейнер 15×11 / 15×10 по строгим физическим правилам погрузки. Сайт — puzzlestow.com; вселенная (комиксы, YouTube, мобильное приложение) строится вокруг игры. **PairSec** — отдельный продукт (маркетплейс платных ролей Judge/Consulter), не часть этого репозитория.
 
-- Preview URL: The user can access the running app through the preview panel
-- Hot reload: Changes to source files are reflected immediately
+**Ориентация контейнера (критично, нарушалась всеми инструментами):** строка **A внизу, K наверху**, вход — **нижний левый угол (A0)**, колонки 0–14 слева направо. Всегда проговаривать ориентацию явно в каждом промпте и подтверждать в коде.
 
-## Project Structure
+**Ключевые размеры:** UnderLodar (rated) = 15×11; старшие ранги = 15×10; Sandbox/Home hero = 15×11. Лестница квалификации: UnderLodar → Lodar → MidLod → Senior Lodar → LeadLod → MasterLod → **ProfiLod** (потолок). Judge и Consulter — платные роли PairSec, не ранги.
 
-This is the canonical project structure. Start with task-relevant files below. Only follow imports or inspect other files when required, when a documented path is missing, or when the repository contradicts this guide.
+**Что реально есть (снимок 2026-10-26):** HomePage, FiguresPage, RulesPage, LorePage, PlayPage, PracticePage, SandboxPage, AuthPage, ProfilePage, AdminPage, PrintPlayPage, DevTestPage (кнопка «Test» — рабочая тестовая страница игры). Заглушки: Leagues, Tournaments, Judge, Community. Fair play (согласование навеса >50 %) — **реализован** (`checkPlacement`, `respondToFairPlay`, модальное подтверждение). Музыка и локализация — **визуальные заглушки**, не реализованы.
 
-- `src/main.tsx` - React entrypoint; imports `src/index.css` and mounts `src/App.tsx` into the `#root` element
-- `src/App.tsx` - Primary application component and the usual starting point for UI work
-- `src/index.css` - Global CSS entrypoint and Tailwind CSS v4 import
-- `index.html` - Vite HTML shell containing the `#root` element and loading `src/main.tsx`
-- `package.json` - Project dependencies and the Vite build, development, preview, and formatting scripts
-- `vite.config.ts` - Vite configuration with React, Tailwind CSS v4, and Figma Make plugins plus the `@` alias for `src`
-- `.mise.toml` - Toolchain versions for Node.js and pnpm
+**Пути:**
 
-## Dependencies
+| Что | Где |
+|---|---|
+| Репозиторий сайта | `D:\4work\vc\PuzzleStow\Two-PlayerStrategyGame` (GitHub: `two-step/Two-PlayerStrategyGame`, ветка `main`) |
+| Документы, спецификации, TO_DO | `D:\4work\puzzlestow\artifacts` |
+| `TO_DO.docx` | там же; красный шрифт = DONE; **номера пунктов сверять только по файлу** |
+| Геометрия фигур | `otgruzka_figures.json` — **единственный источник**: 27 фигур, `cells`/`bbox` локальны `[row, col]` от угла фигуры, не абсолютны в контейнере |
+| Канон правил | TO_DO 44a–h + `PUZZLESTOW_STATE_2026-10-09.md` §3 (живой документ) |
 
-- Runtime: React 19 and React DOM 19
-- Styling: Tailwind CSS v4 with the `@tailwindcss/vite` plugin
-- Build tooling: Vite 8, TypeScript 5.7, and `@vitejs/plugin-react`
-- Formatting: oxfmt
+**Палитра (кано́н, код — источник истины, не DS v1.2):** graphite `#1C1F26` / graphite-2 `#22262F` / graphite-3 `#2A2F3A` · stow-blue `#1F4F82` · lodar-cyan `#1FA7A3` · green-stow `#3BB273` · fairplay `#D6456F` · steel `#A3A9B5` (steel-dim `#4B5162`, `#6B7280`) · light-deck `#F5F7FA`. **Оранжевого нет нигде и быть не может.** Типографика: Inter; JetBrains Mono — нотация ходов и координаты.
 
-## Styling
+## 2. Требования к сессии
 
-This project uses **Tailwind CSS v4** through the `@tailwindcss/vite` plugin configured in `vite.config.ts`. `src/index.css` imports Tailwind with `@import 'tailwindcss';`. Use Tailwind utility classes directly in JSX and put global CSS or Tailwind v4 theme customization in `src/index.css`. This scaffold does not need a Tailwind config file or PostCSS config.
+- **Начало сессии:** прочитать `TO_DO.docx` (номера могли измениться) и текущий стейт; перед любой работой с движком или UI — правила 44a–h целиком и существующая реализация в `rules.ts` / `App.tsx`.
+- **«Ничего не придумываем» — стоящая директива Сергея:** не изобретать правила и семантику; поведение движка — как физическая реальность реального грузчика, не удобное упрощение. Любое расхождение док↔код решается по канону, не «улучшением».
+- **Пересмотр по целостной картине:** локальные правки без всей системы правил — источник прошлых багов. Перед правкой — сопоставить с `checkPlacement`, `hasDeliveryRoute`, `reachableCells`, `computeDeadCells`, `closedRows`/`closedCols`, `overhangRatio`, `respondToFairPlay`.
+- **Периодически выполнять `/compact`**, чтобы контекст не деградировал; перед уплотнением зафиксировать текущее состояние работы.
+- **Порядок работ (установлен 2026-10-26, касается страницы игры):** 46 (этот файл) → 44 (правила на тест-странице) → 43 (таймеры) → 30 (движок соперника, канон 30a–g). Пункт 31 (перенос тест-страницы в игровую) — часть той же работы, не отдельный шаг.
+- **Dev-сервер:** `npm run dev`, порт 8443 (`strictPort`), LAN `http://192.168.100.171:8443/`. Сергей запускает его сам; запускать в чате **только если он ещё не запущен**.
+- **Не запрашивать доступ к репозиторию через web_fetch/GitHub MCP** — исторически блокируется; git и исходники локальны.
+- **Не печатать** значения из `.env.local` (`VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`) и ключи из `.mcp.json`.
+- **Спрашивать Сергея перед расширением объёма задачи.** Тон сообщений: «называй правило, не человека» — «этот ход нарушает правило опоры», никогда «вы ошиблись».
+- Не переоткрывать закрытые вопросы: ориентация осей (DS v1.2 закрывает), fair play (реализован), существование `.env.local` (существует).
 
-`src/main.tsx` imports `src/index.css`, so global font wiring belongs in `src/index.css`. Keep CSS `@import` statements first, then add any `@font-face` rules and font-family defaults there.
+## 3. Стек
 
-## Code quality
+- **React 19** + ReactDOM 19, **Vite 8**, **TypeScript 5.7** (`strict: true`, `noFallthroughCasesInSwitch`).
+- **Tailwind CSS v4** через `@tailwindcss/vite` (конфиг-файл и PostCSS не нужны); тема — в `src/index.css`.
+- **Supabase**: Auth + Postgres; `@supabase/supabase-js` ^2.116; клиент `src/lib/supabaseClient.ts` читает `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` (gitignored, `.env.example` документирует). 7 миграций в `supabase/migrations/`. Avatar — bytea в строке users.
+- **PDF:** `jspdf` + `jspdf-autotable` (Print&Play, игровой отчёт).
+- **Форматирование:** `oxfmt` (`npm run format`). **Тест-раннера и линтера пока нет** — настройка vitest/eslint это предпосылка пунктов 45/46f, не довесок.
+- Node 22 + pnpm 10.34.3 (`.mise.toml`). Скрипты: `dev` (`--host 0.0.0.0`, порт по умолчанию 8443), `build`, `preview`, `format`. Псевдоним `@` → `./src`.
+- **Figma Make всё ещё вшит в сборку** (`vite.config.ts` → `.figma/make/site.json`, слоты `<!-- figma:* -->` в `index.html`). Пункт 27 — не только переименование `package.json`/`AGENTS.md`, но и выпиливание этой обвязки.
+- Структура: `src/App.tsx` (все страницы, ~4.5 тыс. строк — техдолг), `src/engine/rules.ts` (клиентская аппроксимация для дев-харнесса, **не серверный движок**), `src/engine/opponentEngine.ts` (Easy/Medium/Hard), `src/lib/supabaseClient.ts`, `src/main.tsx`, `src/index.css`.
 
-- Use double quotes for strings containing apostrophes (`"We're here to help"`), or escape them in single-quoted strings. An unescaped apostrophe in a single-quoted string breaks the build.
-- Ensure JSX tags are closed and braces are balanced.
-- Export components as default exports.
+## 4. Принципы
+
+- **SOLID**, защищённое кодирование; **SAST/DAST** — учитывать в CI-плане.
+- Каждая функция документирует **назначение, предусловия, постусловия, инварианты**.
+- Осмысленные имена; **DRY**; маленькие сфокусированные функции; **непрерывный рефакторинг**; код-ревью; **TDD**.
+- **Функциональный стиль:** чистые функции, иммутабельность; ошибки — через `Result<T, E>`, **не `throw`**.
+- **Все строки-константы — в переменных окружения**, не хардкод (текущее исключение — ключ в `.mcp.json`, кандидат на чистку).
+- **Логирование** — структурированный JSON через **pino**.
+- **Тесты:** unit — **vitest**; integration — **supertest + testcontainers**.
+- Игровые жёсткие ограничения: **никакого ИИ-советника в rated/соревновательной игре** (только Practice/Sandbox, явно отделённо); **валидация правил — серверно-авторитетна**, клиент не судит; фигуры — **только контуром, без заливки**; нотация `[id фигуры, 2 цифры][точка 1][точка 2]` (например `10A12C14`); телеграм-бот детерминирован, не ИИ.
+- **`otgruzka_figures.json` — источник геометрии:** любую «регенерацию»/«чистку» производных сверять программно с файлом; никогда не доверять вслепую.
+
+## 5. Стиль кода
+
+- **Без классов** — только функции и интерфейсы.
+- **Без default-экспортов** — только именованные.
+- **Без enum** — `as const` объекты + производные типы.
+- **camelCase** для переменных/функций, **PascalCase** для типов/компонентов.
+- **Функция ≤ 30 строк.**
+- Двойные кавычки для строк с апострофами; закрывать JSX-теги, балансировать скобки.
+- **Область действия (решение Сергея 2026-10-26):** это стандарт для **нового и изменяемого кода**, не повод для большого рефакторинга. `App.tsx`/`rules.ts` — признанный техдолг с планом постепенной миграции; пункты 44/43/30 пишутся в новом стиле, но работа ради них не останавливается. При касании функции — приводить её в стиль, если это дёшево.
+
+## 6. Определение «готово»
+
+Код готов, когда:
+
+1. Код написан по требованиям (без изобретённого).
+2. TypeScript компилируется **без ошибок**.
+3. Написаны **unit- и integration-тесты** (vitest / supertest + testcontainers).
+4. На всех экспортах — **JSDoc** (назначение, предусловия, постусловия, инварианты).
+5. **Lint: нет предупреждений.**
+6. Поведение движка/UI сверено с каноном правил 44a–h и целостной картиной — не только с локальным сценарием.
+
+Для `rules.ts` отдельное условие: коммит изменений движка — **только после регрессионных тестов на реальных партиях** (golden set: партии Сергея + синтетика F19/F20/F21/F22/F25/F27), покрытие ≥80 % (пункт 45).
