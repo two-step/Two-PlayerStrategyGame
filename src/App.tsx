@@ -3747,6 +3747,49 @@ function logDuration(ms: number): string {
   return `${Math.floor(totalSecInt / 60)}m ${pad2(totalSecInt % 60)}s`
 }
 
+// TO_DO 43 (2026-10-26 numbering): per-player timer panel for the test game page —
+// "THIS LOAD" = the currently open load window (request received → own request sent),
+// "TOTAL TIME" = the sum of all closed windows. Restarted by resetGame. Preconditions:
+// caller passes live `now` (updated by the 1s tick) so running windows advance; the
+// panel itself is presentation-only, all window bookkeeping lives in DevTestPage.
+function TimerPanel({
+  player, color, startedAt, totalMs, now, label,
+}: {
+  player: string
+  color: string
+  startedAt: number | null
+  totalMs: number
+  now: number
+  label: string
+}) {
+  const running = startedAt != null
+  const currentMs = startedAt != null ? Math.max(0, now - startedAt) : 0
+  return (
+    <div style={{ border: `1px solid ${color}40`, background: C.graphite2 }} className="p-4 flex-1">
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <span style={{ color, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>{player}</span>
+        <span style={{ color: running ? color : C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 9 }}>
+          {running ? label : 'waiting for a load request…'}
+        </span>
+      </div>
+      <div className="flex gap-4 flex-wrap">
+        <div style={{ flex: '1 1 120px', minWidth: 120 }}>
+          <p style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 9, letterSpacing: '0.05em' }}>THIS LOAD</p>
+          <p style={{ color: running ? color : C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 20, fontWeight: 700, lineHeight: 1.2 }}>
+            {running ? logDuration(currentMs) : '—'}
+          </p>
+        </div>
+        <div style={{ flex: '1 1 120px', minWidth: 120 }}>
+          <p style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 9, letterSpacing: '0.05em' }}>TOTAL TIME</p>
+          <p style={{ color, fontFamily: "'JetBrains Mono',monospace", fontSize: 20, fontWeight: 700, lineHeight: 1.2 }}>
+            {totalMs + currentMs > 0 ? logDuration(totalMs + currentMs) : '0.0s'}
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function DevTestPage() {
   // Qualification (TIERS[0] = UnderLodar) drives container size, not a fixed constant
   // (Sergey, 2026-09-09): UnderLodar plays the training 15×11 container (row K exposed);
@@ -3802,6 +3845,33 @@ function DevTestPage() {
   // When the figure currently incoming to YOU was requested — start of the "time spent on
   // load" window the log reports for your placements.
   const requestedAtRef = useRef<number>(Date.now())
+  // TO_DO 43 (2026-10-26 numbering): per-player load timers on the test page.
+  // "Таймер данной загрузки" opens when a load request ARRIVES for that player
+  // (the engine requests a figure for you / you request one for the opponent)
+  // and closes when that same player SENDS their own next request — so the
+  // window spans the placement AND the choice of what to request next, exactly
+  // per the TO_DO wording ("заканчивается после отсылки своего запроса"). The
+  // log's "spent" field covers only the placement half of that window; the
+  // timer is the wider, TO_DO-defined measure. "Таймер общего времени" = sum of
+  // every closed window of that player. The engine decides synchronously, so
+  // its windows are near-zero — honest, not a bug.
+  const loadStartRef = useRef<{ you: number | null; opp: number | null }>({ you: null, opp: null })
+  const [loadTotals, setLoadTotals] = useState<{ you: number; opp: number }>({ you: 0, opp: 0 })
+  const [, setTimersTick] = useState(0)
+
+  /** Opens a player's current-load window at the instant a load request reaches them. */
+  function startLoadTimer(player: 'you' | 'opp') {
+    loadStartRef.current[player] = Date.now()
+  }
+
+  /** Closes a player's open window (no-op if none) and banks its elapsed time into their total. */
+  function endLoadTimer(player: 'you' | 'opp') {
+    const started = loadStartRef.current[player]
+    if (started == null) return
+    loadStartRef.current[player] = null
+    const elapsed = Date.now() - started
+    setLoadTotals(t => (player === 'you' ? { ...t, you: t.you + elapsed } : { ...t, opp: t.opp + elapsed }))
+  }
   // Structured mirror of the placement log lines, kept separately from the display strings
   // so the PDF export (Sergey, 2026-09-08: "Экспорт лога в PDF, как отчёта по игре в
   // задокументированном формате") builds its table from real fields instead of re-parsing
@@ -3840,6 +3910,16 @@ function DevTestPage() {
     }])
   }
 
+  // TO_DO 43: one shared 1s tick that re-renders the timer readouts while any
+  // window is running. Stops entirely when no window is open or the game is
+  // over, so idle pages don't burn a render per second.
+  useEffect(() => {
+    const anyRunning = loadStartRef.current.you != null || loadStartRef.current.opp != null
+    if (!anyRunning || gameOver) return
+    const id = window.setInterval(() => setTimersTick(t => (t + 1) % 1e9), 1000)
+    return () => window.clearInterval(id)
+  }, [gameOver, requester, incomingFigId])
+
   // A "pass" event -- a requested figure has nowhere legal to go, or no figure is left
   // that can be requested -- ends the game exactly like a placement does, but wasn't a
   // placement, so it needs its own structured row (no notation, no time-spent) alongside
@@ -3855,6 +3935,11 @@ function DevTestPage() {
 
   function logGameEnd(message: string, youScore: number, oppScore: number) {
     const at = Date.now()
+    // TO_DO 43: the game is over — any load window still open will never meet
+    // its documented end (the player never sent their next request), so close
+    // both at the ending instant; totals then reflect every real second spent.
+    endLoadTimer('you')
+    endLoadTimer('opp')
     pushLog(`Game ended — ${logDate(at)} ${logTime(at)} — Final score ${youScore}:${oppScore} — ${message}`)
     setGameEndInfo({ date: logDate(at), time: logTime(at), message, youScore, oppScore })
   }
@@ -4023,6 +4108,11 @@ function DevTestPage() {
   function requestForOpp(fig: Figure) {
     if (gameOver || requester !== 'you') return
     const requestedAt = Date.now()
+    // TO_DO 43: your outgoing request both CLOSES your current-load window (you
+    // have just sent your request — that's the window's documented end) and
+    // OPENS the opponent's (a load request just arrived for them).
+    endLoadTimer('you')
+    startLoadTimer('opp')
     setUsedForOpp(prev => new Set(prev).add(fig.id))
     setLastRequestToOpp(fig.id)
     pushLog(`You request ${fig.label} for the opponent.`)
@@ -4071,6 +4161,10 @@ function DevTestPage() {
     setLastRequestToYou(decision.figureId)
     setIncomingFigId(decision.figureId)
     requestedAtRef.current = Date.now() // starts the "time spent on load" clock for your placement
+    // TO_DO 43: this request IS the opponent's outgoing request (closes their
+    // window) and it simultaneously arrives TO you (opens yours).
+    endLoadTimer('opp')
+    startLoadTimer('you')
     setRotIdx(0)
     setClickPoints([])
     setResponse(`Opponent: ${decision.message}`)
@@ -4233,6 +4327,8 @@ function DevTestPage() {
     setLastRequestToYou(null); setLastRequestToOpp(null); setRotIdx(0); setNotation('')
     setPendingFairPlay(null); setGameOver(null); setLog([])
     setMoveRecords([]); setGameStartInfo(null); setGameEndInfo(null)
+    loadStartRef.current = { you: null, opp: null } // TO_DO 43: timers restart from zero
+    setLoadTotals({ you: 0, opp: 0 })
     setFairPlayIn({ approved: 0, declined: 0 }); setFairPlayOut({ approved: 0, declined: 0 })
     setResponse('Flip the coin to decide who requests first.')
   }
@@ -4243,6 +4339,14 @@ function DevTestPage() {
         <span style={{ color: C.red, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.06em' }}>
           DEV / TEST ENVIRONMENT — local engine only, not the production server (TO_DO.docx items 6-8)
         </span>
+      </div>
+
+      {/* TO_DO 43: load timers for each participant — current load window + total of
+          all closed windows. Rendered above the containers so both players' clocks stay
+          visible while placing and while choosing the next request. */}
+      <div className="max-w-7xl mx-auto px-4 pt-5 flex gap-5 flex-col md:flex-row">
+        <TimerPanel player="YOU — LOAD TIMER" color={C.cyan} startedAt={loadStartRef.current.you} totalMs={loadTotals.you} now={Date.now()} label="request received — running until you send yours" />
+        <TimerPanel player="OPPONENT — LOAD TIMER" color={C.steel} startedAt={loadStartRef.current.opp} totalMs={loadTotals.opp} now={Date.now()} label="request received — running until they send theirs" />
       </div>
 
       <div className="max-w-7xl mx-auto px-4 py-5 grid lg:grid-cols-[1fr_340px] gap-5">
@@ -4528,7 +4632,7 @@ export default function App() {
 
   return (
     <div style={{ background: C.graphite, minHeight: '100vh' }}>
-      <Nav page={page} setPage={setPage} isLoggedIn={isLoggedIn} isAdmin={profile?.role === 'Administrator'} onSignOut={() => { supabase.auth.signOut() }} />
+      <Nav page={page} setPage={setPage} isLoggedIn={isLoggedIn} isAdmin={profile?.role === 'Administrator'} onSignOut={() => { supabase.auth.signOut(); setPage('home') }} />
       {authNotice && (
         <div style={{ background: `${C.cyan}18`, borderBottom: `1px solid ${C.cyan}40`, color: C.cyan, fontSize: 13, padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, position: 'relative' }}>
           <span>{authNotice}</span>
