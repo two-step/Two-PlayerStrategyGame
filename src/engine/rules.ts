@@ -287,6 +287,41 @@ function isInternalNotch(run: { top: number; bottom: number }, rows: number): bo
   return run.top !== 0 && run.bottom !== rows - 1
 }
 
+// BUG FIX (Sergey, 2026-09-11, F20 report): a run that touches the true FLOOR but
+// is capped above within its OWN column (top !== 0 -- a low pocket trapped under an
+// overhang, e.g. one floating cell of a figure with nothing but air below it) has its
+// `bottom` pinned at rows-1 no matter how deep the pocket actually is. Comparing that
+// pinned value against a totally unrelated NEIGHBOR run's bottom via the usual <=3
+// rule produces false matches by pure arithmetic coincidence: a floor-level sliver in
+// column c (bottom = rows-1) and a short-wall's open-air run in column c+1 (bottom =
+// rows-4, say) are "within 3" of each other numerically, even though the pocket in
+// column c is sealed off from that open-air run by solid material directly above it
+// IN THE SAME COLUMN -- they don't share a single row and are not physically adjacent.
+// Reported live: F22 left a single floating cell in one column (a floor-level pocket
+// underneath), and that pocket's floor bottom "bridged" into the wide-open sky above a
+// short, unrelated stack one column over -- which then chained backward and opened up
+// the sky-runs of every column in between, including the one behind F22's own genuine
+// 4-tall wall that was supposed to block exactly this. F20 then walked straight through
+// on its next move.
+//
+// Fix: a floor-touching-but-capped run ("pure pocket": bottom === rows-1 AND top !== 0)
+// may only bridge, via the <=3 rule, to a neighbor run that ALSO touches the floor
+// (bottom === rows-1) -- i.e. pocket-to-pocket (or pocket-to-fully-open-column) floor-
+// level crawling, exactly the case the 2026-09-09 fix intended to keep working (their
+// bottoms are always both rows-1, so the <=3 test always trivially holds there; nothing
+// about that legitimate case changes). A pocket can no longer use its floor-pinned
+// bottom to "reach over" into a neighbor's disconnected open-air run above a short wall.
+// Ordinary sky-touching runs (top === 0) and true internal notches (neither extreme --
+// e.g. the 2026-09-10 F25 fix's entry-from-the-side case) are untouched: they keep
+// comparing via the plain <=3 rule against ANY neighbor type, exactly as before.
+function canBridge(a: { top: number; bottom: number }, b: { top: number; bottom: number }, rows: number): boolean {
+  const aIsPurePocket = a.bottom === rows - 1 && a.top !== 0
+  const bIsPurePocket = b.bottom === rows - 1 && b.top !== 0
+  if (aIsPurePocket && b.bottom !== rows - 1) return false
+  if (bIsPurePocket && a.bottom !== rows - 1) return false
+  return Math.abs(a.bottom - b.bottom) <= 3
+}
+
 function reachableRunsByColumn(filled: Set<string>, rows: number): { top: number; bottom: number }[][] {
   const perColumn: { top: number; bottom: number }[][] = []
   for (let c = 0; c < COLS; c++) perColumn.push(columnRuns(filled, rows, c))
@@ -300,14 +335,14 @@ function reachableRunsByColumn(filled: Set<string>, rows: number): { top: number
         if (!reach[c][i] || isInternalNotch(perColumn[c][i], rows)) continue
         for (let j = 0; j < perColumn[c + 1].length; j++) {
           if (reach[c + 1][j]) continue
-          if (Math.abs(perColumn[c][i].bottom - perColumn[c + 1][j].bottom) <= 3) { reach[c + 1][j] = true; changed = true }
+          if (canBridge(perColumn[c][i], perColumn[c + 1][j], rows)) { reach[c + 1][j] = true; changed = true }
         }
       }
       for (let j = 0; j < perColumn[c + 1].length; j++) {
         if (!reach[c + 1][j] || isInternalNotch(perColumn[c + 1][j], rows)) continue
         for (let i = 0; i < perColumn[c].length; i++) {
           if (reach[c][i]) continue
-          if (Math.abs(perColumn[c][i].bottom - perColumn[c + 1][j].bottom) <= 3) { reach[c][i] = true; changed = true }
+          if (canBridge(perColumn[c][i], perColumn[c + 1][j], rows)) { reach[c][i] = true; changed = true }
         }
       }
     }
@@ -875,7 +910,7 @@ export function checkPlacement(cells: Cells | null, filled: Set<string>, rows: n
 // Brute-force search used by "no legal placement = loss" and by the opponent
 // engine below. Grid is small (≤15×11) so trying every orientation × every
 // anchor cell is cheap.
-export function enumeratePlacements(figure: FigureDef, filled: Set<string>, rows: number): Cells[] {
+export function enumeratePlacements(figure: FigureDef, filled: Set<string>, rows: number, limit = Infinity): Cells[] {
   const out: Cells[] = []
   const orientations = getOrientations(figure.cells)
   // Same shape-aware, per-cell reachability rule as checkPlacement (see
@@ -900,14 +935,19 @@ export function enumeratePlacements(figure: FigureDef, filled: Set<string>, rows
         // the old hasDeliveryRoute filter, so the engine's move quality only improves.
         if (!hasReturnPath(nextFilled, rows, cells)) continue
         out.push(cells)
+        if (out.length >= limit) return out
       }
     }
   }
   return out
 }
 
+/** Checks whether a figure has any legal placement without materializing every option.
+ * Preconditions: `rows` matches the active container; postcondition: uses the same
+ * legality checks as `enumeratePlacements`; invariant: never relaxes game rules.
+ */
 export function canPlaceAnywhere(figure: FigureDef, filled: Set<string>, rows: number): boolean {
-  return enumeratePlacements(figure, filled, rows).length > 0
+  return enumeratePlacements(figure, filled, rows, 1).length > 0
 }
 
 // Placement-quality heuristic for the opponent engine. Earlier version only rewarded
