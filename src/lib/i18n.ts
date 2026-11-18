@@ -75,6 +75,7 @@ const COMMON: Dict = {
   "Notation does not match this figure’s reference dots": { ru: "Нотация не совпадает с опорными точками этой фигуры", be: "Натацыя не супадае з апорнымі кропкамі гэтай фігуры" },
   "No support — this placement doesn’t rest on the floor or on any existing piece anywhere": { ru: "Нет опоры — установка не опирается ни на пол, ни на какую-либо установленную фигуру", be: "Няма опоры — устаноўка не абапіраецца ні на падлогу, ні на якую-небудзь усталяваную фігуру" },
   "Cargo can’t reach this spot — a step taller than 3 cells blocks the path from the entrance (build an intermediate step first)": { ru: "Груз не может добраться до этого места — ступень выше 3 клеток перекрывает путь от входа (сначала нарастите промежуточную ступень)", be: "Груз не можа дабрацца да гэтага месца — прыступка вышэй за 3 клеткі перакрывае шлях ад уваходу (спачатку нарасціце прамежкавую прыступку)" },
+  "Point {point} is outside the {rows}-row container": { ru: "Точка {point} вне контейнера из {rows} рядов", be: "Кропка {point} па-за кантэйнерам з {rows} радкоў" },
 }
 
 /** Home page (hero, sections, FAQ, footer) + TIERS descriptions. */
@@ -630,6 +631,140 @@ const PRINTPLAY: Dict = {
   "15×11 Beginner": { ru: "15×11 Начальный", be: "15×11 Пачатковы" },
 }
 
+/** Dev/test page (TO_DO 6-8 harness): fully translated, PDF export stays EN (jsPDF built-in fonts cannot render Cyrillic). */
+const DEVTEST: Dict = {
+  "DEV / TEST ENVIRONMENT — local engine only, not the production server (TO_DO.docx items 6-8)":
+    { ru: "ДЕВ / ТЕСТОВАЯ СРЕДА — только локальный движок, не продакшн-сервер (пункты 6-8 TO_DO.docx)", be: "ДЭВ / ТЭСТАВАЕ АСЯРОДДЗЕ — толькі лакальны рухавік, не прадакшн-сервер (пункты 6-8 TO_DO.docx)" },
+  "waiting for a load request…": { ru: "ожидание запроса на загрузку…", be: "чаканне запыту на загрузку…" },
+  "THIS LOAD": { ru: "ЭТА ЗАГРУЗКА", be: "ГЭТА ЗАГРУЗКА" },
+  "TOTAL TIME": { ru: "ОБЩЕЕ ВРЕМЯ", be: "АГУЛЬНЫ ЧАС" },
+  "YOU — LOAD TIMER": { ru: "ВЫ — ТАЙМЕР ЗАГРУЗКИ", be: "ВЫ — ТАЙМЕР ЗАГРУЗКІ" },
+  "OPPONENT — LOAD TIMER": { ru: "СОПЕРНИК — ТАЙМЕР ЗАГРУЗКИ", be: "САПЕРНІК — ТАЙМЕР ЗАГРУЗКІ" },
+  "request received — running until you send yours": { ru: "запрос получен — идёт до отсылки вашего", be: "запыт атрыманы — ідзе да адсылкі вашага" },
+  "request received — running until they send theirs": { ru: "запрос получен — идёт до отсылки ихнего", be: "запыт атрыманы — ідзе да адсылкі іхняга" },
+  "QUALIFICATION (TEST)": { ru: "КВАЛИФИКАЦИЯ (ТЕСТ)", be: "КВАЛІФІКАЦЫЯ (ТЭСТ)" },
+  "15×11 (training)": { ru: "15×11 (тренировочный)", be: "15×11 (трэніровачны)" },
+  "15×10 (competitive)": { ru: "15×10 (соревновательный)", be: "15×10 (спаборніцкі)" },
+  "Container size follows qualification: UnderLodar plays 15×11 (row K exposed); Lodar and above play the standard 15×10. Changing this starts a new game.":
+    { ru: "Размер контейнера следует квалификации: UnderLodar играет 15×11 (ряд K открыт); Lodar и выше — стандартные 15×10. Смена запускает новую партию.", be: "Памер кантэйнера ідзе за кваліфікацыяй: UnderLodar гуляе 15×11 (радок K адкрыты); Lodar і вышэй — стандартныя 15×10. Змена запускае новую партыю." },
+  "OPPONENT DIFFICULTY": { ru: "СЛОЖНОСТЬ СОПЕРНИКА", be: "Складанасць САПЕРНІКА" },
+  "Easy (~15% target win rate)": { ru: "Легко (~15% целевой вероятности победы)", be: "Лёгка (~15% мэтавай імавернасці перамогі)" },
+  "Medium (~30% target win rate)": { ru: "Средне (~30% целевой вероятности победы)", be: "Сярэдне (~30% мэтавай імавернасці перамогі)" },
+  "Hard (~55% target win rate)": { ru: "Сложно (~55% целевой вероятности победы)", be: "Цяжка (~55% мэтавай імавернасці перамогі)" },
+  "Easy": { ru: "Легко", be: "Лёгка" },
+  "Medium": { ru: "Средне", be: "Сярэдне" },
+  "Hard": { ru: "Сложно", be: "Цяжка" },
+  "WHO ENTERS FIRST": { ru: "КТО ЗАХОДИТ ПЕРВЫМ", be: "ХТО ЗАХОДЗІЦЬ ПЕРШЫ" },
+  "Flipping… (5s)": { ru: "Бросаем… (5 с)", be: "Кідаем… (5 с)" },
+  "Flipped": { ru: "Брошено", be: "Кінута" },
+  "Flip the coin": { ru: "Бросить монету", be: "Кінуць манету" },
+  "Nothing requested yet.": { ru: "Запросов пока не было.", be: "Запытаў пакуль не было." },
+  "Request notation, e.g. {ex}:": { ru: "Нотация запроса, напр. {ex}:", be: "Натацыя запыту, напр. {ex}:" },
+  "figure id + point(s)": { ru: "номер фигуры + точка(и)", be: "нумар фігуры + кропка(ы)" },
+  "Response:": { ru: "Ответ:", be: "Адказ:" },
+  "LOG": { ru: "ЖУРНАЛ", be: "ЖУРНАЛ" },
+  "Fair-play requests (TO_DO 44c): IN = received from the opponent, OUT = sent by you — approved/declined per the game protocol":
+    { ru: "Fair-play-запросы (TO_DO 44c): IN = полученные от соперника, OUT = отправленные вами — одобрено/отклонено по протоколу игры", be: "Fair-play-запыты (TO_DO 44c): IN = атрыманыя ад саперніка, OUT = адпраўленыя вамі — ухвалена/адмоўлена па пратаколе гульні" },
+  "FAIR PLAY — IN {a}✓/{b}✗ · OUT {c}✓/{d}✗": { ru: "FAIR PLAY — IN {a}✓/{b}✗ · OUT {c}✓/{d}✗", be: "FAIR PLAY — IN {a}✓/{b}✗ · OUT {c}✓/{d}✗" },
+  "Export (PDF)": { ru: "Экспорт (PDF)", be: "Экспарт (PDF)" },
+  "show engine internals": { ru: "показать внутренности движка", be: "паказаць нутрасьць рухавіка" },
+  "hide engine internals": { ru: "скрыть внутренности движка", be: "схаваць нутрасьць рухавіка" },
+  "New game": { ru: "Новая партия", be: "Новая партыя" },
+  "YOUR CONTAINER — {rows} rows, {n} closed": { ru: "ВАШ КОНТЕЙНЕР — {rows} рядов, {n} закрыто", be: "ВАШ КАНТЭЙНЕР — {rows} радкоў, {n} зачынена" },
+  "point 1, then point 2 — point 1 is the figure's own fixed dot and sets the rotation": { ru: "точку 1, затем точку 2 — точка 1 — собственная фиксированная точка фигуры, она задаёт поворот", be: "кропку 1, потым кропку 2 — кропка 1 — уласная фіксаваная кропка фігуры, яна задае паварот" },
+  "a point": { ru: "точку", be: "кропку" },
+  "Click {what} below to fill the request field ({click}/{need})": { ru: "Нажмите {what} ниже, чтобы заполнить поле запроса ({click}/{need})", be: "Націсніце {what} ніжэй, каб запоўніць поле запыту ({click}/{need})" },
+  "clear": { ru: "очистить", be: "ачысціць" },
+  "Win ten times first, successfully pass the exam, and advance to the Lodar 15X10 level":
+    { ru: "Сначала выиграйте десять раз, успешно сдайте экзамен и переходите на уровень Lodar 15×10", be: "Спачатку выйграйце дзесяць разоў, паспяхова складзеце экзамен і пераходзіце на ўзровень Lodar 15×10" },
+  "OPPONENT CONTAINER — {n} closed · {diff}": { ru: "КОНТЕЙНЕР СОПЕРНИКА — {n} закрыто · {diff}", be: "КАНТЭЙНЕР САПЕРНІКА — {n} зачынена · {diff}" },
+  "PICKED BY OPPONENT — view only, your 27": { ru: "ВЫБРАНО СОПЕРНИКОМ — только просмотр, ваши 27", be: "ВЫБРАНА САПЕРНІКАМ — толькі прагляд, вашы 27" },
+  "(already placed in your container)": { ru: "(уже установлена в вашем контейнере)", be: "(ужо ўсталявана ў вашым кантэйнеры)" },
+  "(still available for the opponent to assign you)": { ru: "(ещё может быть назначена вам соперником)", be: "(яшчэ можа быць прызначана вам сапернікам)" },
+  "PICKED BY YOU — your own 27": { ru: "ВЫБИРАЕТЕ ВЫ — ваш собственный 27", be: "ВЫБІРАЕЦЕ ВЫ — ваш уласны 27" },
+  " — click one to choose": { ru: " — нажмите фигуру, чтобы выбрать", be: " — націсніце фігуру, каб выбраць" },
+  "(already requested for the opponent)": { ru: "(уже запрошена для соперника)", be: "(ужо запытана для саперніка)" },
+  "(repeat-request blocked)": { ru: "(повторный запрос запрещён)", be: "(паўторны запыт забаронены)" },
+  "(not your turn to request)": { ru: "(сейчас не ваш ход запрашивать)", be: "(зараз не ваш ход запытваць)" },
+  "Flip the coin to decide who requests first.": { ru: "Бросьте монету, чтобы решить, кто запрашивает первым.", be: "Кіньце манету, каб вырашыць, хто запытвае першым." },
+  "Flipping…": { ru: "Бросаем…", be: "Кідаем…" },
+  "Coin: you enter first — the opponent requests your first figure.": { ru: "Монета: вы заходите первым — соперник запрашивает вашу первую фигуру.", be: "Манета: вы заходзіце першым — сапернік запытвае вашу першую фігуру." },
+  "Coin: opponent enters first — pick a figure to request for them.": { ru: "Монета: соперник заходит первым — выберите фигуру, которую запросите для него.", be: "Манета: сапернік заходзіць першым — выберыце фігуру, якую запытаеце для яго." },
+  "Waiting for the opponent to request a figure from you…": { ru: "Ждём, пока соперник запросит фигуру у вас…", be: "Чакаем, пакуль сапернік запытае фігуру ў вас…" },
+  "Placed. Choose a figure to request for the opponent.": { ru: "Установлено. Выберите фигуру, которую запросите для соперника.", be: "Усталявана. Выберыце фігуру, якую запытаеце для саперніка." },
+  "You win — the opponent has no legal placement for that figure.": { ru: "Вы победили — у соперника нет легальной установки для этой фигуры.", be: "Вы перамаглі — у саперніка няма легальнай ўстаноўкі для гэтай фігуры." },
+  "Opponent wins — 5 rows/columns closed.": { ru: "Победил соперник — закрыто 5 рядов/столбцов.", be: "Перамог сапернік — зачынена 5 радкоў/калонак." },
+  "Opponent wins — you have no legal placement for the requested figure.": { ru: "Победил соперник — у вас нет легальной установки для запрошенной фигуры.", be: "Перамог сапернік — у вас няма легальнай ўстаноўкі для запытанай фігуры." },
+  "Opponent wins — you have no figure left that you are allowed to request.": { ru: "Победил соперник — у вас не осталось фигур, которые вы вправе запросить.", be: "Перамог сапернік — у вас не засталося фігур, якія вы маеце права запытаць." },
+  "You lose — this load sealed your way back to the container exit (rule: the loader must be able to return to A0).":
+    { ru: "Вы проиграли — эта загрузка замуровала вам путь назад к выходу из контейнера (правило: грузчик должен иметь возможность вернуться к A0).", be: "Вы прайгралі — гэтая загрузка замуравала вам шлях назад да выхаду з кантэйнера (правіла: грузчык павінен мець магчымасць вярнуцца да A0)." },
+  "You win — 5 rows/columns closed.": { ru: "Вы победили — закрыто 5 рядов/столбцов.", be: "Вы перамаглі — зачынена 5 радкоў/калонак." },
+  "Draw — all 27 figures placed, equal rows/columns closed.": { ru: "Ничья — все 27 фигур установлены, рядов/столбцов закрыто поровну.", be: "Нічыя — усе 27 фігур усталяваны, радкоў/калонак зачынена пароўну." },
+  "You win — more rows/columns closed when cargo ran out.": { ru: "Вы победили — к концу груза закрыто больше рядов/столбцов.", be: "Вы перамаглі — да канца грузу зачынена больш радкоў/калонак." },
+  "Opponent wins — more rows/columns closed when cargo ran out.": { ru: "Победил соперник — к концу груза закрыто больше рядов/столбцов.", be: "Перамог сапернік — да канца грузу зачынена больш радкоў/калонак." },
+  "no legal placement": { ru: "нет легальной установки", be: "няма легальнай ўстаноўкі" },
+  "no figure left to request": { ru: "не осталось фигур для запроса", be: "не засталося фігур для запыту" },
+  "You request {fig} for the opponent.": { ru: "Вы запрашиваете {fig} для соперника.", be: "Вы запытваеце {fig} для саперніка." },
+  "Opponent requests {fig} from you.": { ru: "Соперник запрашивает {fig} у вас.", be: "Сапернік запытвае {fig} у вас." },
+  "Opponent: {msg}": { ru: "Соперник: {msg}", be: "Сапернік: {msg}" },
+  "Game started — {date} {time}": { ru: "Партия начата — {date} {time}", be: "Партыя пачата — {date} {time}" },
+  "Coin flip: you go first.": { ru: "Монета: вы заходите первым.", be: "Манета: вы заходзіце першым." },
+  "Coin flip: opponent goes first.": { ru: "Монета: соперник заходит первым.", be: "Манета: сапернік заходзіць першым." },
+  "Game ended — {date} {time} — Final score {y}:{o} — {msg}": { ru: "Партия окончена — {date} {time} — Финальный счёт {y}:{o} — {msg}", be: "Партыя скончана — {date} {time} — Фінальны лік {y}:{o} — {msg}" },
+  "Fair-play check ({pct}% unsupported): opponent says \"{msg}\"": { ru: "Fair-play-проверка ({pct}% свеса): соперник отвечает: «{msg}»", be: "Fair-play-праверка ({pct}% звесу): сапернік адказвае: «{msg}»" },
+  "opponent agreed via fair play. Submit again to confirm.": { ru: "соперник согласился через fair play. Отправьте ещё раз для подтверждения.", be: "сапернік згодзіўся праз fair play. Адпраўце яшчэ раз для пацверджання." },
+  "opponent declined fair play. Choose a different placement.": { ru: "соперник отклонил fair play. Выберите другую установку.", be: "сапернік адхіліў fair play. Выберыце іншую ўстаноўку." },
+  "{player} — {date} {time} — spent {dur} — placed {fig} at {notation}{closed} — Score {y}:{o}":
+    { ru: "{player} — {date} {time} — потрачено {dur} — установлена {fig} на {notation}{closed} — Счёт {y}:{o}", be: "{player} — {date} {time} — патрачана {dur} — усталявана {fig} на {notation}{closed} — Лік {y}:{o}" },
+  " — {closed}": { ru: " — {closed}", be: " — {closed}" },
+  "Row {letter} closed": { ru: "Ряд {letter} закрыт", be: "Радок {letter} зачынены" },
+  "Column {n} closed": { ru: "Столбец {n} закрыт", be: "Калонка {n} зачынена" },
+  "notation is for figure {id}, but {label} was requested": { ru: "нотация для фигуры {id}, а запрошена {label}", be: "натацыя для фігуры {id}, а запытана {label}" },
+  "Opponent": { ru: "Соперник", be: "Сапернік" },
+  "SCORE": { ru: "СЧЁТ", be: "ЛІК" },
+  "View only": { ru: "Только просмотр", be: "Толькі прагляд" },
+}
+
+/** Closed set of engine/opponent phrases (opponentEngine.ts) and dynamic rules.ts
+ *  errors, translated AT DISPLAY TIME — engine files are regression-gated (TO_DO 45). */
+const ENGINE_TEXT: Record<string, { ru: string; be: string }> = {
+  "Requesting {fig}.": { ru: "Запрашиваю {fig}.", be: "Запытваю {fig}." },
+  "Send over {fig} next.": { ru: "Передайте мне следующим {fig}.", be: "Перадайце мне наступным {fig}." },
+  "Load {fig}.": { ru: "Грузите {fig}.", be: "Грузіце {fig}." },
+  "Agreed — leave it as is.": { ru: "Согласен — оставляем как есть.", be: "Згодны — пакідаем як ёсць." },
+  "Fine by me, that's fair play.": { ru: "Меня устраивает — это честная игра.", be: "Мяне ўладжвае — гэта fair play." },
+  "No — replace it under the 50% rule.": { ru: "Нет — поставьте в другом месте по правилу 50%.", be: "Не — паставьце ў іншым месцы па правіле 50%." },
+  "I've got nowhere to put that. Your point.": { ru: "Мне некуда это поставить. Ваш ход.", be: "Мне няма куды гэта паставіць. Ваш ход." },
+  "Placed.": { ru: "Установлено.", be: "Усталявана." },
+  "Expected format [2-digit figure id][point][point?], e.g. 07B9C10":
+    { ru: "Ожидается формат [двузначный номер фигуры][точка][точка?], напр. 07B9C10", be: "Чакаецца фармат [двухзначны нумар фігуры][кропка][кропка?], напр. 07B9C10" },
+}
+
+/** Dynamic engine strings: regex captures re-inserted as t() params. */
+const ENGINE_PATTERNS: { re: RegExp; key: string; params: string[] }[] = [
+  { re: /^Point (.+) is outside the (\d+)-row container$/, key: "Point {point} is outside the {rows}-row container", params: ["point", "rows"] },
+]
+
+/**
+ * Translates a closed-set engine message at display time (EN fallback = message itself).
+ * Preconditions: msg comes from opponentEngine phrases or rules.ts errors (see above).
+ * Postconditions: never throws; unknown messages pass through untranslated.
+ */
+export function translateEngineText(lang: Lang, msg: string): string {
+  for (const p of ENGINE_PATTERNS) {
+    const m = msg.match(p.re)
+    if (m) {
+      const params: Record<string, string> = {}
+      p.params.forEach((name, idx) => { params[name] = m[idx + 1] })
+      const out = translate(lang, p.key, params)
+      if (out !== p.key) return out
+    }
+  }
+  const direct = ENGINE_TEXT[msg]
+  if (direct) return lang === "EN" ? msg : (direct[lang === "RU" ? "ru" : "be"] ?? msg)
+  return msg
+}
+
 /** Language gate modal (geo-detection question). All texts render in the SUGGESTED language. */
 const GATE: Dict = {
   "Language": { ru: "Язык", be: "Мова" },
@@ -646,7 +781,7 @@ const GATE: Dict = {
 /** Merged dictionary: EN key → { ru, be }. */
 const ALL: Dict = {
   ...COMMON, ...HOME, ...FIGURES, ...RULES, ...LORE, ...PLAY, ...SANDBOX,
-  ...GATED, ...AUTH, ...PROFILE, ...ADMIN, ...PRINTPLAY, ...GATE,
+  ...GATED, ...AUTH, ...PROFILE, ...ADMIN, ...PRINTPLAY, ...DEVTEST, ...GATE,
 }
 
 /** Lookup per language; EN is empty (translate falls back to the key itself). */

@@ -6,7 +6,7 @@ import autoTable from 'jspdf-autotable'
 import type { Session } from '@supabase/supabase-js'
 import { supabase, type PuzzleStowProfile, resizeAvatarFile, blobToByteaHex, byteaHexToObjectUrl } from './lib/supabaseClient'
 import { I18nProvider, useLang, type GeoSuggestion } from './lib/I18nContext'
-import { LANGS, RULE_OVERVIEW_PANELS, translate, type Lang } from './lib/i18n'
+import { LANGS, RULE_OVERVIEW_PANELS, translate, translateEngineText, type Lang } from './lib/i18n'
 
 // Supabase's auth emails (confirm signup / password recovery / email change) redirect
 // back to this app with a `type` param in the URL hash (implicit flow) or query string
@@ -395,10 +395,11 @@ function ContainerGrid({
 // shows you:opponent and OPPONENT CONTAINER shows opponent:you, not two independent
 // counters). `breakdown` is this side's own rows-vs-columns split.
 function ScorePanel({ myClosed, oppClosed, breakdown, color = C.green }: { myClosed: number; oppClosed: number; breakdown: string; color?: string }) {
+  const { t } = useLang()
   return (
     <div style={{ border: `1px solid ${color}35`, background: `${color}10`, minWidth: 60 }}
       className="p-2 flex flex-col items-center justify-center gap-1 shrink-0 self-stretch">
-      <span style={{ color, fontFamily: "'JetBrains Mono',monospace", fontSize: 9, letterSpacing: '0.05em' }}>SCORE</span>
+      <span style={{ color, fontFamily: "'JetBrains Mono',monospace", fontSize: 9, letterSpacing: '0.05em' }}>{t('SCORE')}</span>
       <span style={{ color, fontFamily: "'JetBrains Mono',monospace", fontSize: 22, fontWeight: 700, lineHeight: 1 }}>{myClosed}:{oppClosed}</span>
       <span style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 9 }}>{breakdown}</span>
     </div>
@@ -434,7 +435,7 @@ function FigureBankPanel({
             opacity: used ? 0.25 : actionable ? 1 : 0.4,
           }
           const preview = <FigurePreview cells={fig.cells} cardSize={32} color={color} cellPx={6} dots={fig.dots} showNumber={false} />
-          const title_ = `${fig.label} ${fig.name}${hint}`
+          const title_ = `${fig.label} ${fig.name}${hint ? ' ' + hint : ''}`
           return onSelect ? (
             <button key={fig.id} title={title_} onClick={actionable ? () => onSelect(fig) : undefined}
               disabled={!actionable} style={{ ...style, cursor: actionable ? 'pointer' : 'default' }}>
@@ -3741,23 +3742,24 @@ function TimerPanel({
 }) {
   const running = startedAt != null
   const currentMs = startedAt != null ? Math.max(0, now - startedAt) : 0
+  const { t } = useLang()
   return (
     <div style={{ border: `1px solid ${color}40`, background: C.graphite2 }} className="p-4 flex-1">
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <span style={{ color, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>{player}</span>
         <span style={{ color: running ? color : C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 9 }}>
-          {running ? label : 'waiting for a load request…'}
+          {running ? label : t('waiting for a load request…')}
         </span>
       </div>
       <div className="flex gap-4 flex-wrap">
         <div style={{ flex: '1 1 120px', minWidth: 120 }}>
-          <p style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 9, letterSpacing: '0.05em' }}>THIS LOAD</p>
+          <p style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 9, letterSpacing: '0.05em' }}>{t('THIS LOAD')}</p>
           <p style={{ color: running ? color : C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 20, fontWeight: 700, lineHeight: 1.2 }}>
             {running ? logDuration(currentMs) : '—'}
           </p>
         </div>
         <div style={{ flex: '1 1 120px', minWidth: 120 }}>
-          <p style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 9, letterSpacing: '0.05em' }}>TOTAL TIME</p>
+          <p style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 9, letterSpacing: '0.05em' }}>{t('TOTAL TIME')}</p>
           <p style={{ color, fontFamily: "'JetBrains Mono',monospace", fontSize: 20, fontWeight: 700, lineHeight: 1.2 }}>
             {totalMs + currentMs > 0 ? logDuration(totalMs + currentMs) : '0.0s'}
           </p>
@@ -3768,6 +3770,7 @@ function TimerPanel({
 }
 
 function DevTestPage() {
+  const { lang, t } = useLang()
   // Qualification (TIERS[0] = UnderLodar) drives container size, not a fixed constant
   // (Sergey, 2026-09-09): UnderLodar plays the training 15×11 container (row K exposed);
   // winning 10 rated matches and passing the exam promotes to Lodar, which plays the
@@ -3808,7 +3811,14 @@ function DevTestPage() {
 
   const [rotIdx, setRotIdx] = useState(0)
   const [notation, setNotation] = useState('')
-  const [response, setResponse] = useState('Flip the coin to decide who requests first.')
+  const [response, setResponse] = useState<string | null>(null)
+  // Response/gameOver texts are stored already-translated; the default response
+  // is rendered per-language via the fallback below, so the initial state is null.
+  const responseText = response ?? t('Flip the coin to decide who requests first.')
+  const responseIsError = response != null && (
+    responseText.startsWith(t('Invalid: {reason}').split('{reason}')[0])
+    || responseText.includes(t('opponent declined fair play. Choose a different placement.'))
+  )
   const [pendingFairPlay, setPendingFairPlay] = useState<{ key: string } | null>(null)
   const [gameOver, setGameOver] = useState<string | null>(null)
   const [log, setLog] = useState<{ id: number; t: number; text: string }[]>([])
@@ -3865,11 +3875,13 @@ function DevTestPage() {
   // than the real number of events and blew past its own bottom alignment with
   // the containers above it.
   const pushLog = (text: string) => setLog(l => [{ id: ++logIdRef.current, t: Date.now(), text }, ...l].slice(0, 40))
-  // Small color-coding for the log so it reads at a glance instead of a flat gray wall of text.
+  // Small color-coding for the log — works for EN/RU/BE log lines (pushed already-translated).
   function logColor(text: string): string {
-    if (/wins?\b/i.test(text)) return /you win/i.test(text) ? C.green : C.red
-    if (/\bdraw\b/i.test(text)) return C.blue
-    if (text.startsWith('You')) return C.cyan
+    if (/^opponent wins|^победил соперник|^перамог сапернік/i.test(text)) return C.red
+    if (/^you win|^выигр|^вы перамагл/i.test(text)) return C.green
+    if (/\blose\b|прайгра|проиграл/i.test(text)) return C.red
+    if (/\bdraw\b|ничья|нічыя/i.test(text)) return C.blue
+    if (/^You|^Вы\b/.test(text)) return C.cyan
     return C.steel
   }
 
@@ -3879,8 +3891,11 @@ function DevTestPage() {
   function logPlacement(player: 'You' | 'Opponent', fig: Figure, cells: Cells, at: number, spentMs: number, newlyClosed: string[], youScore: number, oppScore: number) {
     const dotPoints = fig.dots.map(idx => ({ r: cells[idx][0], c: cells[idx][1] }))
     const placement = formatNotation(fig.id, dotPoints, DEV_ROWS)
-    const closedText = newlyClosed.length ? ` — ${newlyClosed.join(', ')}` : ''
-    pushLog(`${player} — ${logDate(at)} ${logTime(at)} — spent ${logDuration(spentMs)} — placed ${fig.label} at ${placement}${closedText} — Score ${youScore}:${oppScore}`)
+    const closedText = newlyClosed.length ? t(' — {closed}', { closed: newlyClosed.join(', ') }) : ''
+    pushLog(t('{player} — {date} {time} — spent {dur} — placed {fig} at {notation}{closed} — Score {y}:{o}', {
+      player: t(player), date: logDate(at), time: logTime(at), dur: logDuration(spentMs),
+      fig: fig.label, notation: placement, closed: closedText, y: youScore, o: oppScore,
+    }))
     setMoveRecords(prev => [...prev, {
       player, date: logDate(at), time: logTime(at), spentLabel: logDuration(spentMs),
       figureLabel: fig.label, notation: placement, closed: newlyClosed, youScore, oppScore,
@@ -3917,7 +3932,7 @@ function DevTestPage() {
     // both at the ending instant; totals then reflect every real second spent.
     endLoadTimer('you')
     endLoadTimer('opp')
-    pushLog(`Game ended — ${logDate(at)} ${logTime(at)} — Final score ${youScore}:${oppScore} — ${message}`)
+    pushLog(t('Game ended — {date} {time} — Final score {y}:{o} — {msg}', { date: logDate(at), time: logTime(at), y: youScore, o: oppScore, msg: message }))
     setGameEndInfo({ date: logDate(at), time: logTime(at), message, youScore, oppScore })
   }
 
@@ -4073,9 +4088,6 @@ function DevTestPage() {
   const ghostCells = displayGhost?.set
   const ghostValid = displayGhost?.valid ?? true
   const ghostOutOfBoundsMessage = ghostPlacement?.outOfBoundsMessage
-  // Response text is user-facing plain text, not a tagged object — detect the error/decline
-  // cases by their known wording so the Response field can render them in red.
-  const responseIsError = /^Invalid:/.test(response) || /declined fair play/.test(response)
 
   function handleYourContainerClick(r: number, c: number) {
     if (!incomingFig || gameOver) return
@@ -4092,13 +4104,13 @@ function DevTestPage() {
     startLoadTimer('opp')
     setUsedForOpp(prev => new Set(prev).add(fig.id))
     setLastRequestToOpp(fig.id)
-    pushLog(`You request ${fig.label} for the opponent.`)
+    pushLog(t('You request {fig} for the opponent.', { fig: fig.label }))
     const decision = engine.decidePlacement(fig, filledOpp, DEV_ROWS, engineContext)
     if (decision.kind === 'pass') {
-      pushLog(`Opponent: ${decision.message}`)
-      logPass('Opponent', `${fig.label} — no legal placement`, 5, closedOppTotal)
-      logGameEnd('You win — the opponent has no legal placement for that figure.', 5, closedOppTotal)
-      setGameOver('You win — the opponent has no legal placement for that figure.')
+      pushLog(t('Opponent: {msg}', { msg: translateEngineText(lang, decision.message) }))
+      logPass('Opponent', `${fig.label} — ${t('no legal placement')}`, 5, closedOppTotal)
+      logGameEnd(t('You win — the opponent has no legal placement for that figure.'), 5, closedOppTotal)
+      setGameOver(t('You win — the opponent has no legal placement for that figure.'))
       return
     }
     if (decision.kind === 'place') {
@@ -4114,19 +4126,19 @@ function DevTestPage() {
       const colsBefore = closedCols(before, DEV_ROWS, deadBefore)
       const colsAfter = closedCols(next, DEV_ROWS, deadAfter)
       const newlyClosed = [
-        ...[...rowsAfter].filter(r => !rowsBefore.has(r)).map(r => `Row ${rowToLetter(r, DEV_ROWS)} closed`),
-        ...[...colsAfter].filter(c => !colsBefore.has(c)).map(c => `Column ${c} closed`),
+        ...[...rowsAfter].filter(r => !rowsBefore.has(r)).map(r => t('Row {letter} closed', { letter: rowToLetter(r, DEV_ROWS) })),
+        ...[...colsAfter].filter(c => !colsBefore.has(c)).map(c => t('Column {n} closed', { n: c })),
       ]
       const oppClosedAfter = rowsAfter.size + colsAfter.size
       logPlacement('Opponent', fig, decision.cells, Date.now(), Date.now() - requestedAt, newlyClosed, closedYouTotal, oppClosedAfter)
       if (oppClosedAfter >= 5) {
-        logGameEnd('Opponent wins — 5 rows/columns closed.', closedYouTotal, oppClosedAfter)
-        setGameOver('Opponent wins — 5 rows/columns closed.')
+        logGameEnd(t('Opponent wins — 5 rows/columns closed.'), closedYouTotal, oppClosedAfter)
+        setGameOver(t('Opponent wins — 5 rows/columns closed.'))
         return
       }
     }
     setRequester('opp')
-    setResponse('Waiting for the opponent to request a figure from you…')
+    setResponse(t('Waiting for the opponent to request a figure from you…'))
   }
 
   // Opponent's turn to request a figure for you, whenever it becomes their turn.
@@ -4144,13 +4156,13 @@ function DevTestPage() {
     startLoadTimer('you')
     setRotIdx(0)
     setClickPoints([])
-    setResponse(`Opponent: ${decision.message}`)
-    pushLog(`Opponent requests ${FIGURES.find(f => f.id === decision.figureId)?.label} from you.`)
+    setResponse(t('Opponent: {msg}', { msg: translateEngineText(lang, decision.message) }))
+    pushLog(t('Opponent requests {fig} from you.', { fig: FIGURES.find(f => f.id === decision.figureId)?.label ?? '' }))
     const fig = FIGURES.find(f => f.id === decision.figureId)!
     if (!canPlaceAnywhere(fig, filledYou, DEV_ROWS)) {
-      logPass('You', `${fig.label} — no legal placement`, closedYouTotal, 5)
-      logGameEnd('Opponent wins — you have no legal placement for the requested figure.', closedYouTotal, 5)
-      setGameOver('Opponent wins — you have no legal placement for the requested figure.')
+      logPass('You', `${fig.label} — ${t('no legal placement')}`, closedYouTotal, 5)
+      logGameEnd(t('Opponent wins — you have no legal placement for the requested figure.'), closedYouTotal, 5)
+      setGameOver(t('Opponent wins — you have no legal placement for the requested figure.'))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requester, incomingFigId, gameOver])
@@ -4168,24 +4180,24 @@ function DevTestPage() {
     if (requester !== 'you' || incomingFigId != null || gameOver) return
     const avail = FIGURES.filter(f => !usedForOpp.has(f.id) && f.id !== lastRequestToYou)
     if (avail.length > 0) return
-    logPass('You', 'no figure left to request', closedYouTotal, 5)
-    logGameEnd('Opponent wins — you have no figure left that you are allowed to request.', closedYouTotal, 5)
-    setGameOver('Opponent wins — you have no figure left that you are allowed to request.')
+    logPass('You', t('no figure left to request'), closedYouTotal, 5)
+    logGameEnd(t('Opponent wins — you have no figure left that you are allowed to request.'), closedYouTotal, 5)
+    setGameOver(t('Opponent wins — you have no figure left that you are allowed to request.'))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requester, incomingFigId, gameOver, usedForOpp, lastRequestToYou])
 
   function flipCoin() {
     setCoinState('spinning')
-    setResponse('Flipping…')
+    setResponse(t('Flipping…'))
     window.setTimeout(() => {
       const youFirst = Math.random() < 0.5
       setCoinState('done')
       setRequester(youFirst ? 'opp' : 'you') // "opp requests first" means you get the first incoming figure
-      setResponse(youFirst ? 'Coin: you enter first — the opponent requests your first figure.' : 'Coin: opponent enters first — pick a figure to request for them.')
+      setResponse(t(youFirst ? 'Coin: you enter first — the opponent requests your first figure.' : 'Coin: opponent enters first — pick a figure to request for them.'))
       const startedAt = Date.now()
-      pushLog(`Game started — ${logDate(startedAt)} ${logTime(startedAt)}`)
+      pushLog(t('Game started — {date} {time}', { date: logDate(startedAt), time: logTime(startedAt) }))
       setGameStartInfo({ date: logDate(startedAt), time: logTime(startedAt) })
-      pushLog(youFirst ? 'Coin flip: you go first.' : 'Coin flip: opponent goes first.')
+      pushLog(t(youFirst ? 'Coin flip: you go first.' : 'Coin flip: opponent goes first.'))
     }, 5000)
   }
 
@@ -4213,9 +4225,9 @@ function DevTestPage() {
         : computePlacementFromAnchor(incomingFig, rotIdx, clickedPoints[0])
     } else {
       const parsed = parseNotation(notation, DEV_ROWS)
-      if ('error' in parsed) { setResponse(`Invalid: ${parsed.error}`); return }
+      if ('error' in parsed) { setResponse(t('Invalid: {reason}', { reason: translateEngineText(lang, parsed.error) })); return }
       if (parsed.figureId !== incomingFig.id) {
-        setResponse(`Invalid: notation is for figure ${String(parsed.figureId).padStart(2, '0')}, but ${incomingFig.label} was requested`)
+        setResponse(t('Invalid: {reason}', { reason: t('notation is for figure {id}, but {label} was requested', { id: String(parsed.figureId).padStart(2, '0'), label: incomingFig.label }) }))
         return
       }
       cells = parsed.points.length >= 2
@@ -4229,7 +4241,7 @@ function DevTestPage() {
     if (!result.ok) {
       if (result.needsFairPlay) {
         const fp = engine.respondToFairPlay(result.overhangRatio ?? 0)
-        pushLog(`Fair-play check (${Math.round((result.overhangRatio ?? 0) * 100)}% unsupported): opponent says "${fp.message}"`)
+        pushLog(t('Fair-play check ({pct}% unsupported): opponent says "{msg}"', { pct: Math.round((result.overhangRatio ?? 0) * 100), msg: translateEngineText(lang, fp.message) }))
         // 44c: this is an OUTGOING fair-play request (yours) — the opponent's APPROVED /
         // DECLINED verdict counts into your OUT tally immediately, exactly per the
         // protocol (APPROVED QTY / DECLINED QTY), even if you then place elsewhere.
@@ -4241,15 +4253,15 @@ function DevTestPage() {
         }
         if (fp.kind === 'fair_play_response' && fp.approve && cellsKey != null) {
           setPendingFairPlay({ key: cellsKey })
-          setResponse(`${result.reason} — opponent agreed via fair play. Submit again to confirm.`)
+          setResponse(`${t(result.reason ?? '')} — ${t('opponent agreed via fair play. Submit again to confirm.')}`)
         } else {
           setPendingFairPlay(null)
-          setResponse(`${result.reason} — opponent declined fair play. Choose a different placement.`)
+          setResponse(`${t(result.reason ?? '')} — ${t('opponent declined fair play. Choose a different placement.')}`)
         }
         return
       }
       setPendingFairPlay(null)
-      setResponse(`Invalid: ${result.reason}`)
+      setResponse(t('Invalid: {reason}', { reason: t(result.reason ?? '') }))
       return
     }
     setPendingFairPlay(null)
@@ -4268,8 +4280,8 @@ function DevTestPage() {
     const colsBefore = closedCols(before, DEV_ROWS, deadBefore)
     const colsAfter = closedCols(next, DEV_ROWS, deadAfter)
     const newlyClosed = [
-      ...[...rowsAfter].filter(r => !rowsBefore.has(r)).map(r => `Row ${rowToLetter(r, DEV_ROWS)} closed`),
-      ...[...colsAfter].filter(c => !colsBefore.has(c)).map(c => `Column ${c} closed`),
+      ...[...rowsAfter].filter(r => !rowsBefore.has(r)).map(r => t('Row {letter} closed', { letter: rowToLetter(r, DEV_ROWS) })),
+      ...[...colsAfter].filter(c => !colsBefore.has(c)).map(c => t('Column {n} closed', { n: c })),
     ]
     const nowClosed = rowsAfter.size + colsAfter.size
     const placedAt = Date.now()
@@ -4280,20 +4292,20 @@ function DevTestPage() {
     // the player's own doing. Score per Official_Rules end-variant: loser keeps the rows
     // closed so far, winner gets 5.
     if (!hasReturnPath(next, DEV_ROWS, result.cells!)) {
-      const msg = 'You lose — this load sealed your way back to the container exit (rule: the loader must be able to return to A0).'
+      const msg = t('You lose — this load sealed your way back to the container exit (rule: the loader must be able to return to A0).')
       logGameEnd(msg, closedYouTotal, 5)
       setGameOver(msg)
       return
     }
-    if (nowClosed >= 5) { logGameEnd('You win — 5 rows/columns closed.', nowClosed, closedOppTotal); setGameOver('You win — 5 rows/columns closed.'); return }
+    if (nowClosed >= 5) { logGameEnd(t('You win — 5 rows/columns closed.'), nowClosed, closedOppTotal); setGameOver(t('You win — 5 rows/columns closed.')); return }
     if (usedForYou.size >= 27 && usedForOpp.size >= 27) {
-      const finalMsg = nowClosed === closedOppTotal ? 'Draw — all 27 figures placed, equal rows/columns closed.'
-        : nowClosed > closedOppTotal ? 'You win — more rows/columns closed when cargo ran out.' : 'Opponent wins — more rows/columns closed when cargo ran out.'
+      const finalMsg = nowClosed === closedOppTotal ? t('Draw — all 27 figures placed, equal rows/columns closed.')
+        : nowClosed > closedOppTotal ? t('You win — more rows/columns closed when cargo ran out.') : t('Opponent wins — more rows/columns closed when cargo ran out.')
       logGameEnd(finalMsg, nowClosed, closedOppTotal)
       setGameOver(finalMsg)
       return
     }
-    setResponse('Placed. Choose a figure to request for the opponent.')
+    setResponse(t('Placed. Choose a figure to request for the opponent.'))
     setRequester('you')
   }
 
@@ -4307,14 +4319,14 @@ function DevTestPage() {
     loadStartRef.current = { you: null, opp: null } // TO_DO 43: timers restart from zero
     setLoadTotals({ you: 0, opp: 0 })
     setFairPlayIn({ approved: 0, declined: 0 }); setFairPlayOut({ approved: 0, declined: 0 })
-    setResponse('Flip the coin to decide who requests first.')
+    setResponse(null)
   }
 
   return (
     <div style={{ background: C.graphite, minHeight: '100vh', paddingTop: '3.5rem' }}>
       <div style={{ background: `${C.red}18`, borderBottom: `1px solid ${C.red}40` }} className="px-4 md:px-6 py-2 text-center">
         <span style={{ color: C.red, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.06em' }}>
-          DEV / TEST ENVIRONMENT — local engine only, not the production server (TO_DO.docx items 6-8)
+          {t('DEV / TEST ENVIRONMENT — local engine only, not the production server (TO_DO.docx items 6-8)')}
         </span>
       </div>
 
@@ -4322,8 +4334,8 @@ function DevTestPage() {
           all closed windows. Rendered above the containers so both players' clocks stay
           visible while placing and while choosing the next request. */}
       <div className="max-w-7xl mx-auto px-4 pt-5 flex gap-5 flex-col md:flex-row">
-        <TimerPanel player="YOU — LOAD TIMER" color={C.cyan} startedAt={loadStartRef.current.you} totalMs={loadTotals.you} now={Date.now()} label="request received — running until you send yours" />
-        <TimerPanel player="OPPONENT — LOAD TIMER" color={C.steel} startedAt={loadStartRef.current.opp} totalMs={loadTotals.opp} now={Date.now()} label="request received — running until they send theirs" />
+        <TimerPanel player={t('YOU — LOAD TIMER')} color={C.cyan} startedAt={loadStartRef.current.you} totalMs={loadTotals.you} now={Date.now()} label={t('request received — running until you send yours')} />
+        <TimerPanel player={t('OPPONENT — LOAD TIMER')} color={C.steel} startedAt={loadStartRef.current.opp} totalMs={loadTotals.opp} now={Date.now()} label={t('request received — running until they send theirs')} />
       </div>
 
       <div className="max-w-7xl mx-auto px-4 py-5 grid lg:grid-cols-[1fr_340px] gap-5">
@@ -4331,7 +4343,7 @@ function DevTestPage() {
           {gameOver && (
             <div style={{ border: `1px solid ${C.green}60`, background: `${C.green}18`, color: C.deck }} className="p-4 flex items-center justify-between gap-3">
               <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 13 }}>{gameOver}</span>
-              <button onClick={resetGame} style={{ background: C.green, color: C.graphite, fontWeight: 700, fontSize: 12, padding: '6px 12px' }}>New game</button>
+              <button onClick={resetGame} style={{ background: C.green, color: C.graphite, fontWeight: 700, fontSize: 12, padding: '6px 12px' }}>{t('New game')}</button>
             </div>
           )}
 
@@ -4342,22 +4354,25 @@ function DevTestPage() {
           <div className="flex flex-col lg:flex-row gap-5 items-stretch">
             <div style={{ border: `1px solid ${C.cyan}30`, background: C.graphite2 }} className="p-4 flex-1 min-w-0">
               <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
-                <span style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>YOUR CONTAINER — {DEV_ROWS} rows, {displayYouScore} closed</span>
+                <span style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>{t('YOUR CONTAINER — {rows} rows, {n} closed', { rows: DEV_ROWS, n: displayYouScore })}</span>
                 {incomingFig && !gameOver && (
                   <span style={{ color: C.steelDim, fontSize: 11 }}>
-                    Click {pointsNeeded === 2 ? "point 1, then point 2 — point 1 is the figure's own fixed dot and sets the rotation" : 'a point'} below to fill the request field ({clickPoints.length}/{pointsNeeded})
+                    {t('Click {what} below to fill the request field ({click}/{need})', {
+                      what: t(pointsNeeded === 2 ? "point 1, then point 2 — point 1 is the figure's own fixed dot and sets the rotation" : 'a point'),
+                      click: clickPoints.length, need: pointsNeeded,
+                    })}
                     {clickPoints.length > 0 && (
-                      <button onClick={() => setClickPoints([])} style={{ color: C.red, marginLeft: 8, textDecoration: 'underline' }}>clear</button>
+                      <button onClick={() => setClickPoints([])} style={{ color: C.red, marginLeft: 8, textDecoration: 'underline' }}>{t('clear')}</button>
                     )}
                     {ghostOutOfBoundsMessage && (
-                      <span style={{ color: C.red, marginLeft: 8 }}>— {ghostOutOfBoundsMessage}</span>
+                      <span style={{ color: C.red, marginLeft: 8 }}>— {t(ghostOutOfBoundsMessage)}</span>
                     )}
                   </span>
                 )}
               </div>
               {DEV_ROWS === 11 && (
                 <p style={{ color: C.steel, fontSize: 12, fontStyle: 'italic', marginBottom: 10 }}>
-                  Win ten times first, successfully pass the exam, and advance to the Lodar 15X10 level
+                  {t('Win ten times first, successfully pass the exam, and advance to the Lodar 15X10 level')}
                 </p>
               )}
               <div className="flex gap-3 items-start">
@@ -4374,18 +4389,18 @@ function DevTestPage() {
             </div>
 
             <FigureBankPanel
-              title="PICKED BY OPPONENT — view only, your 27"
+              title={t('PICKED BY OPPONENT — view only, your 27')}
               panelColor={C.steelDim} itemColor={C.steel}
               getStatus={fig => ({
                 used: usedForYou.has(fig.id), actionable: true,
-                hint: usedForYou.has(fig.id) ? ' (already placed in your container)' : ' (still available for the opponent to assign you)',
+                hint: usedForYou.has(fig.id) ? t('(already placed in your container)') : t('(still available for the opponent to assign you)'),
               })} />
           </div>
 
           <div className="flex flex-col lg:flex-row gap-5 items-stretch flex-1">
             <div style={{ border: `1px solid ${C.steelDim}25`, background: C.graphite2 }} className="p-4 flex-1 min-w-0 flex flex-col">
               <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
-                <span style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>OPPONENT CONTAINER — {displayOppScore} closed · {difficulty}</span>
+                <span style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>{t('OPPONENT CONTAINER — {n} closed · {diff}', { n: displayOppScore, diff: t(difficulty.charAt(0).toUpperCase() + difficulty.slice(1)) })}</span>
               </div>
               <div className="flex gap-3 items-start">
                 <div className="overflow-x-auto">
@@ -4396,12 +4411,12 @@ function DevTestPage() {
             </div>
 
             <FigureBankPanel
-              title={`PICKED BY YOU — your own 27${requester === 'you' && !gameOver && !incomingFig ? ' — click one to choose' : ''}`}
+              title={`${t('PICKED BY YOU — your own 27')}${requester === 'you' && !gameOver && !incomingFig ? t(' — click one to choose') : ''}`}
               panelColor={C.blue} itemColor={C.cyan} onSelect={requestForOpp}
               getStatus={fig => {
                 const used = usedForOpp.has(fig.id)
                 const actionable = requester === 'you' && !gameOver && !incomingFig && !used && fig.id !== lastRequestToYou
-                const hint = used ? ' (already requested for the opponent)' : fig.id === lastRequestToYou ? ' (repeat-request blocked)' : !actionable ? ' (not your turn to request)' : ''
+                const hint = used ? t('(already requested for the opponent)') : fig.id === lastRequestToYou ? t('(repeat-request blocked)') : !actionable ? t('(not your turn to request)') : ''
                 return { used, actionable, hint }
               }} />
           </div>
@@ -4409,39 +4424,39 @@ function DevTestPage() {
 
         <div className="flex flex-col gap-4 h-full">
           <div style={{ border: `1px solid ${C.steel}40`, background: C.graphite2 }} className="p-5">
-            <p style={{ color: C.steel, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>QUALIFICATION (TEST)</p>
+            <p style={{ color: C.steel, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>{t('QUALIFICATION (TEST)')}</p>
             <select value={qualTierId} onChange={e => { setQualTierId(Number(e.target.value)); resetGame() }}
               style={{ width: '100%', background: C.graphite, border: `1px solid ${C.steel}`, color: C.deck, fontFamily: "'JetBrains Mono',monospace", fontSize: 13, padding: '8px 10px' }}>
-              {TIERS.map(t => (
-                <option key={t.id} value={t.id}>{t.name} — {t.id === 1 ? '15×11 (training)' : '15×10 (competitive)'}</option>
+              {TIERS.map(tier => (
+                <option key={tier.id} value={tier.id}>{tier.name} — {tier.id === 1 ? t('15×11 (training)') : t('15×10 (competitive)')}</option>
               ))}
             </select>
             <p style={{ color: C.steelDim, fontSize: 11, marginTop: 8 }}>
-              Container size follows qualification: UnderLodar plays 15×11 (row K exposed); Lodar and above play the standard 15×10. Changing this starts a new game.
+              {t('Container size follows qualification: UnderLodar plays 15×11 (row K exposed); Lodar and above play the standard 15×10. Changing this starts a new game.')}
             </p>
           </div>
 
           <div style={{ border: `1px solid ${C.blue}40`, background: C.graphite2 }} className="p-5">
-            <p style={{ color: C.blue, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>OPPONENT DIFFICULTY</p>
+            <p style={{ color: C.blue, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>{t('OPPONENT DIFFICULTY')}</p>
             <select value={difficulty} onChange={e => setDifficulty(e.target.value as Difficulty)}
               style={{ width: '100%', background: C.graphite, border: `1px solid ${C.blue}`, color: C.deck, fontFamily: "'JetBrains Mono',monospace", fontSize: 13, padding: '8px 10px' }}>
-              <option value="easy">Easy (~15% target win rate)</option>
-              <option value="medium">Medium (~30% target win rate)</option>
-              <option value="hard">Hard (~55% target win rate)</option>
+              <option value="easy">{t('Easy (~15% target win rate)')}</option>
+              <option value="medium">{t('Medium (~30% target win rate)')}</option>
+              <option value="hard">{t('Hard (~55% target win rate)')}</option>
             </select>
           </div>
 
           <div style={{ border: `1px solid ${C.cyan}40`, background: C.graphite2 }} className="p-5">
-            <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>WHO ENTERS FIRST</p>
+            <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>{t('WHO ENTERS FIRST')}</p>
             <button onClick={flipCoin} disabled={coinState === 'spinning' || requester != null}
               style={{ width: '100%', background: coinState === 'spinning' ? C.steelDim : C.cyan, color: C.graphite, fontWeight: 700, fontSize: 13, padding: '10px', opacity: requester != null ? 0.4 : 1 }}
               className={coinState === 'spinning' ? 'animate-pulse' : ''}>
-              {coinState === 'spinning' ? 'Flipping… (5s)' : requester != null ? 'Flipped' : 'Flip the coin'}
+              {coinState === 'spinning' ? t('Flipping… (5s)') : requester != null ? t('Flipped') : t('Flip the coin')}
             </button>
           </div>
 
           <div style={{ border: `1px solid ${C.cyan}40`, background: C.graphite2 }} className="p-5 flex-1 flex flex-col">
-            <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 12 }}>INCOMING CARGO</p>
+            <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 12 }}>{t('INCOMING CARGO')}</p>
             {incomingFig ? (
               <>
                 <div style={{ background: C.graphite, border: `1px solid ${C.cyan}22`, padding: 14 }} className="flex items-center justify-center mb-4">
@@ -4458,18 +4473,18 @@ function DevTestPage() {
                 )}
               </>
             ) : (
-              <p style={{ color: C.steelDim, fontSize: 12 }}>Nothing requested yet.</p>
+              <p style={{ color: C.steelDim, fontSize: 12 }}>{t('Nothing requested yet.')}</p>
             )}
-            <p style={{ color: C.steelDim, fontSize: 11, marginBottom: 8 }}>Request notation, e.g. 07B9C10:</p>
+            <p style={{ color: C.steelDim, fontSize: 11, marginBottom: 8 }}>{t('Request notation, e.g. {ex}:', { ex: '07B9C10' })}</p>
             <div className="flex gap-2 mb-2">
               <input value={notation} onChange={e => setNotation(e.target.value)} disabled={!incomingFig || !!gameOver}
-                placeholder="figure id + point(s)"
+                placeholder={t('figure id + point(s)')}
                 style={{ background: C.graphite, border: `1px solid ${C.blue}`, color: C.deck, fontFamily: "'JetBrains Mono',monospace", fontSize: 13, padding: '8px 10px', flex: 1, outline: 'none', opacity: incomingFig ? 1 : 0.4 }} />
               <button onClick={submitPlacement} disabled={!incomingFig || !notation || !!gameOver}
                 style={{ background: C.cyan, color: C.graphite, fontWeight: 700, fontSize: 12, padding: '8px 14px', opacity: incomingFig && notation && !gameOver ? 1 : 0.4 }}>SUBMIT</button>
             </div>
-            <p style={{ color: C.steelDim, fontSize: 11, marginBottom: 4 }}>Response:</p>
-            <input value={response} disabled readOnly
+            <p style={{ color: C.steelDim, fontSize: 11, marginBottom: 4 }}>{t('Response:')}</p>
+            <input value={responseText} disabled readOnly
               style={{ width: '100%', background: C.graphite, border: `1px solid ${responseIsError ? C.red : C.steelDim}40`, color: responseIsError ? C.red : C.steel, fontFamily: "'JetBrains Mono',monospace", fontSize: 12, padding: '8px 10px' }} />
           </div>
 
@@ -4484,17 +4499,17 @@ function DevTestPage() {
       <div className="max-w-7xl mx-auto px-4 pb-5">
         <div style={{ border: `1px solid ${C.steelDim}25`, background: C.graphite2 }} className="p-5">
           <div className="flex items-center justify-between mb-2 gap-3 flex-wrap">
-            <p style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>LOG</p>
+            <p style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>{t('LOG')}</p>
             <div className="flex items-center gap-4 flex-wrap">
-              <span style={{ color: C.steel, fontFamily: "'JetBrains Mono',monospace", fontSize: 10 }} title="Fair-play requests (TO_DO 44c): IN = received from the opponent, OUT = sent by you — approved/declined per the game protocol">
-                FAIR PLAY — IN {fairPlayIn.approved}✓/{fairPlayIn.declined}✗ · OUT {fairPlayOut.approved}✓/{fairPlayOut.declined}✗
+              <span style={{ color: C.steel, fontFamily: "'JetBrains Mono',monospace", fontSize: 10 }} title={t('Fair-play requests (TO_DO 44c): IN = received from the opponent, OUT = sent by you — approved/declined per the game protocol')}>
+                {t('FAIR PLAY — IN {a}✓/{b}✗ · OUT {c}✓/{d}✗', { a: fairPlayIn.approved, b: fairPlayIn.declined, c: fairPlayOut.approved, d: fairPlayOut.declined })}
               </span>
               <button onClick={exportGameReportPdf} disabled={!moveRecords.length}
                 style={{ color: moveRecords.length ? C.cyan : C.steelDim, fontSize: 10, fontFamily: "'JetBrains Mono',monospace", textDecoration: 'underline', opacity: moveRecords.length ? 1 : 0.4, cursor: moveRecords.length ? 'pointer' : 'default' }}>
-                Export (PDF)
+                {t('Export (PDF)')}
               </button>
               <button onClick={() => setShowInternals(s => !s)} style={{ color: C.steelDim, fontSize: 10, fontFamily: "'JetBrains Mono',monospace", textDecoration: 'underline' }}>
-                {showInternals ? 'hide' : 'show'} engine internals
+                {showInternals ? t('hide engine internals') : t('show engine internals')}
               </button>
             </div>
           </div>
