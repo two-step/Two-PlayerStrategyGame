@@ -3875,7 +3875,7 @@ function DevTestPage() {
   // than the real number of events and blew past its own bottom alignment with
   // the containers above it.
   const pushLog = (text: string) => setLog(l => [{ id: ++logIdRef.current, t: Date.now(), text }, ...l].slice(0, 40))
-  // Small color-coding for the log — works for EN/RU/BE log lines (pushed already-translated).
+  // Small color-coding for the log — works for EN/RU/BY log lines (pushed already-translated).
   function logColor(text: string): string {
     if (/^opponent wins|^победил соперник|^перамог сапернік/i.test(text)) return C.red
     if (/^you win|^выигр|^вы перамагл/i.test(text)) return C.green
@@ -4541,7 +4541,7 @@ function DevTestPage() {
 const GEO_PROMPT_KEY: Record<Lang, string> = {
   EN: "Detected region: international. Switch viewing language to English?",
   RU: "Detected region: Russia. Switch viewing language to Russian?",
-  BE: "Detected region: Belarus. Switch viewing language to Belarusian?",
+  BY: "Detected region: Belarus. Switch viewing language to Belarusian?",
 }
 
 function LanguageGateModal({ suggestion }: { suggestion: GeoSuggestion }) {

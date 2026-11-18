@@ -9,20 +9,20 @@
 // Design invariants:
 // - Dictionary keys are the ENGLISH SOURCE STRINGS as they appear in App.tsx
 //   (matching apostrophes/quotes exactly). EN needs no dictionary: translate()
-//   falls back to the key itself. A missing RU/BE entry degrades to the English
+//   falls back to the key itself. A missing RU/BY entry degrades to the English
 //   key — never throws, never blanks the UI.
 // - rules.ts (regression-gated engine file) is NOT touched: engine messages are
 //   translated at display time by looking them up in the same dictionary.
 // - Style: functions only, no classes, no default exports, no enum (AGENTS.md §5).
 
 /** Available viewing languages, display names in their own language. */
-export const LANGS = { EN: "English", RU: "Русский", BE: "Беларуская" } as const
+export const LANGS = { EN: "English", RU: "Русский", BY: "Беларуская" } as const
 
 /** Union of supported language codes. */
 export type Lang = keyof typeof LANGS
 
 /** TO_DO 28: the site starts in Belarusian regardless of the browser locale. */
-export const DEFAULT_LANG: Lang = "BE"
+export const DEFAULT_LANG: Lang = "BY"
 
 /** localStorage key for the visitor's chosen viewing language. */
 export const LANG_STORAGE_KEY = "ps_lang"
@@ -41,7 +41,7 @@ export const GEO_URL: string = import.meta.env.VITE_GEO_URL ?? "https://ipapi.co
 export const GEO_TIMEOUT_MS = 5000
 
 /** Country code → suggested viewing language. Anything unmapped suggests EN. */
-export const COUNTRY_TO_LANG: Record<string, Lang> = { BY: "BE", RU: "RU" }
+export const COUNTRY_TO_LANG: Record<string, Lang> = { BY: "BY", RU: "RU" }
 
 // ── Dictionary ───────────────────────────────────────────────────────────────
 
@@ -437,7 +437,7 @@ export const RULE_OVERVIEW_PANELS: Record<Lang, { title: string; headline: strin
       body: "Установка отклоняется, если после неё нигде во всём контейнере не останется места для доставки груза — здесь заполнена каждая клетка, кроме входа, поэтому даже одноклеточный Mono отклоняется, если встаёт сюда:",
       note: "Дело не в размере или форме фигуры — Mono мельче не бывает, и всё же он не может занять эту клетку. Это правило охраняет буквально последнюю достижимую клетку. Замуровать меньший карман раньше — законно: те клетки просто становятся навсегда мёртвым пространством." },
   ],
-  BE: [
+  BY: [
     { title: "АПОРА", headline: "Кожнай фігуры патрэбна апора",
       body: "У кантэйнеры нішто не можа вісець — кожная фігура дзе-небудзь абавязана дакранацца падлогі ці ўжо ўсталяванай фігуры. Паглядзіце, што адбываецца, калі мы спрабуем апусціць фігуру проста ў пустату:",
       note: "Жорсткае правіла — у адрозненне ад навесу ніжэй, fair-play-выключэння для яго няма." },
@@ -788,7 +788,7 @@ const ALL: Dict = {
 export const DICT: Record<Lang, Record<string, string>> = {
   EN: {},
   RU: Object.fromEntries(Object.entries(ALL).map(([k, v]) => [k, v.ru])),
-  BE: Object.fromEntries(Object.entries(ALL).map(([k, v]) => [k, v.be])),
+  BY: Object.fromEntries(Object.entries(ALL).map(([k, v]) => [k, v.be])),
 }
 
 /**
@@ -812,7 +812,8 @@ export function translate(lang: Lang, key: string, params?: Record<string, strin
 export function loadStoredLang(): Lang {
   try {
     const v = window.localStorage.getItem(LANG_STORAGE_KEY)
-    return v != null && v in LANGS ? (v as Lang) : DEFAULT_LANG
+    const stored = v === "BE" ? "BY" : v // migration: pre-rename code
+    return stored != null && stored in LANGS ? (stored as Lang) : DEFAULT_LANG
   } catch {
     return DEFAULT_LANG
   }
@@ -874,7 +875,7 @@ export function langForCountry(code: string | null): Lang {
   return COUNTRY_TO_LANG[code.toUpperCase()] ?? "EN"
 }
 
-/** BCP-47 tag for `<html lang>`. */
+/** BCP-47 tag for `<html lang>` (Belarusian is "be" per ISO 639-1, not the "BY" country code). */
 export function htmlLangTag(lang: Lang): string {
-  return lang.toLowerCase()
+  return lang === "BY" ? "be" : lang.toLowerCase()
 }
