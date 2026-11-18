@@ -5,6 +5,8 @@ import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import type { Session } from '@supabase/supabase-js'
 import { supabase, type PuzzleStowProfile, resizeAvatarFile, blobToByteaHex, byteaHexToObjectUrl } from './lib/supabaseClient'
+import { I18nProvider, useLang, type GeoSuggestion } from './lib/I18nContext'
+import { LANGS, RULE_OVERVIEW_PANELS, translate, type Lang } from './lib/i18n'
 
 // Supabase's auth emails (confirm signup / password recovery / email change) redirect
 // back to this app with a `type` param in the URL hash (implicit flow) or query string
@@ -655,13 +657,13 @@ function Nav({ page, setPage, isLoggedIn, isAdmin, onSignOut }: {
 }) {
   const [open, setOpen] = useState(false)
   const [musicOn, setMusicOn] = useState(false)
-  const [lang, setLang] = useState<'EN' | 'RU'>('EN')
+  const { lang, setLang, t } = useLang()
 
   const links: { label: string; p: Page }[] = [
-    { label: 'Figures', p: 'figures' },
-    { label: 'Rules', p: 'rules' },
-    { label: 'Lore', p: 'lore' },
-    { label: 'Print & Play', p: 'printplay' },
+    { label: t('Figures'), p: 'figures' },
+    { label: t('Rules'), p: 'rules' },
+    { label: t('Lore'), p: 'lore' },
+    { label: t('Print & Play'), p: 'printplay' },
   ]
 
   return (
@@ -688,14 +690,14 @@ function Nav({ page, setPage, isLoggedIn, isAdmin, onSignOut }: {
         {/* Desktop right */}
         <div className="hidden md:flex items-center gap-3">
           <div style={{ border: `1px solid ${C.steelDim}40` }} className="flex">
-            {(['EN', 'RU'] as const).map(l => (
+            {(Object.keys(LANGS) as Lang[]).map(l => (
               <button key={l} onClick={() => setLang(l)}
                 style={{ color: lang === l ? C.graphite : C.steelDim, background: lang === l ? C.cyan : 'transparent', fontFamily: "'JetBrains Mono', monospace", fontSize: 10, padding: '4px 8px', transition: 'all 0.15s' }}>
                 {l}
               </button>
             ))}
           </div>
-          <button onClick={() => setMusicOn(!musicOn)} title={musicOn ? 'Music on (visual)' : 'Music off'}
+          <button onClick={() => setMusicOn(!musicOn)} title={musicOn ? t('Music on (visual)') : t('Music off')}
             style={{ color: musicOn ? C.cyan : C.steelDim, transition: 'color 0.2s' }}
             className={musicOn ? 'animate-pulse' : ''}>
             <MusicIcon />
@@ -715,9 +717,9 @@ function Nav({ page, setPage, isLoggedIn, isAdmin, onSignOut }: {
                 style={{ color: page === 'profile' ? C.cyan : C.steel, border: `1px solid ${page === 'profile' ? C.cyan : C.steelDim}50`, fontSize: 13, padding: '4px 14px', display: 'flex', alignItems: 'center', gap: 6 }}
                 className="hover:text-deck hover:border-steel transition-all">
                 <UserIcon size={13} color={page === 'profile' ? C.cyan : C.steel} />
-                Profile
+                {t('Profile')}
               </button>
-              <button onClick={onSignOut} title="Sign out" style={{ color: C.steelDim }}
+              <button onClick={onSignOut} title={t('Sign out')} style={{ color: C.steelDim }}
                 className="hover:text-deck transition-colors">
                 <LogoutIcon size={16} />
               </button>
@@ -725,10 +727,10 @@ function Nav({ page, setPage, isLoggedIn, isAdmin, onSignOut }: {
           ) : (
             <button onClick={() => setPage('auth')}
               style={{ color: C.steel, border: `1px solid ${C.steelDim}50`, fontSize: 13, padding: '4px 14px' }}
-              className="hover:text-deck hover:border-steel transition-all">Sign In</button>
+              className="hover:text-deck hover:border-steel transition-all">{t('Sign In')}</button>
           )}
           <button onClick={() => setPage('play')} style={{ background: C.blue, color: C.deck }}
-            className="text-sm font-semibold px-4 py-1.5 hover:brightness-110 transition-all">Play</button>
+            className="text-sm font-semibold px-4 py-1.5 hover:brightness-110 transition-all">{t('Play')}</button>
         </div>
 
         {/* Mobile right */}
@@ -759,25 +761,25 @@ function Nav({ page, setPage, isLoggedIn, isAdmin, onSignOut }: {
           {isLoggedIn ? (
             <>
               {isAdmin && (
-                <button onClick={() => { setPage('admin'); setOpen(false) }} style={{ color: page === 'admin' ? C.cyan : C.steel }} className="text-sm font-medium text-left">Admin</button>
+                <button onClick={() => { setPage('admin'); setOpen(false) }} style={{ color: page === 'admin' ? C.cyan : C.steel }} className="text-sm font-medium text-left">{t('Admin')}</button>
               )}
               <button onClick={() => { setPage('profile'); setOpen(false) }} style={{ color: page === 'profile' ? C.cyan : C.steel, display: 'flex', alignItems: 'center', gap: 8 }} className="text-sm font-medium text-left">
                 <UserIcon size={14} color={page === 'profile' ? C.cyan : C.steel} />
-                Profile
+                {t('Profile')}
               </button>
               <button onClick={() => { onSignOut(); setOpen(false) }} style={{ color: C.steelDim, display: 'flex', alignItems: 'center', gap: 8 }} className="text-sm text-left">
                 <LogoutIcon size={14} />
-                Sign out
+                {t('Sign out')}
               </button>
             </>
           ) : (
-            <button onClick={() => { setPage('auth'); setOpen(false) }} style={{ color: C.steel }} className="text-sm font-medium text-left">Sign In / Sign Up</button>
+            <button onClick={() => { setPage('auth'); setOpen(false) }} style={{ color: C.steel }} className="text-sm font-medium text-left">{t('Sign In / Sign Up')}</button>
           )}
           <div className="flex items-center gap-3">
             <button onClick={() => { setPage('play'); setOpen(false) }}
-              style={{ background: C.blue, color: C.deck }} className="text-sm font-semibold px-4 py-2">Play</button>
+              style={{ background: C.blue, color: C.deck }} className="text-sm font-semibold px-4 py-2">{t('Play')}</button>
             <div style={{ border: `1px solid ${C.steelDim}40` }} className="flex">
-              {(['EN', 'RU'] as const).map(l => (
+              {(Object.keys(LANGS) as Lang[]).map(l => (
                 <button key={l} onClick={() => setLang(l)}
                   style={{ color: lang === l ? C.graphite : C.steelDim, background: lang === l ? C.cyan : 'transparent', fontFamily: "'JetBrains Mono', monospace", fontSize: 10, padding: '4px 8px' }}>{l}</button>
               ))}
@@ -795,6 +797,7 @@ function Nav({ page, setPage, isLoggedIn, isAdmin, onSignOut }: {
 // sign-in prompt on top. Logged-in visitors never see this -- see the page === 'sandbox'
 // / page === 'practice' render branches in App().
 function GatedPreview({ title, blurb, features, setPage, children }: { title: string; blurb: string; features: string[]; setPage: (p: Page) => void; children: React.ReactNode }) {
+  const { t } = useLang()
   return (
     <div style={{ position: 'relative' }}>
       {/* Lighter than the old blur(3px)/75%-dim -- the real page underneath should still
@@ -817,7 +820,7 @@ function GatedPreview({ title, blurb, features, setPage, children }: { title: st
           </ul>
           <button onClick={() => setPage('auth')}
             style={{ background: C.blue, color: C.deck, fontWeight: 600, fontSize: 13, padding: '10px 22px', border: 'none', cursor: 'pointer', width: '100%' }}>
-            Sign In / Sign Up
+            {t('Sign In / Sign Up')}
           </button>
         </div>
       </div>
@@ -829,6 +832,7 @@ function GatedPreview({ title, blurb, features, setPage, children }: { title: st
 function HomePage({ setPage }: { setPage: (p: Page) => void }) {
   const [faqOpen, setFaqOpen] = useState<number | null>(null)
   const [hoveredTier, setHoveredTier] = useState<number | null>(null)
+  const { t } = useLang()
   const bpBg = {
     backgroundImage: `linear-gradient(rgba(31,167,163,0.05) 1px,transparent 1px),linear-gradient(90deg,rgba(31,167,163,0.05) 1px,transparent 1px)`,
     backgroundSize: '24px 24px',
@@ -844,33 +848,32 @@ function HomePage({ setPage }: { setPage: (p: Page) => void }) {
             <div style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 10, letterSpacing: '0.12em' }}
               className="mb-6 flex items-center gap-2 flex-wrap">
               <span style={{ background: C.cyan }} className="inline-block w-5 h-px shrink-0" />
-              <span className="break-words">TWO-PLAYER STRATEGY · PERFECT INFORMATION</span>
+              <span className="break-words">{t('TWO-PLAYER STRATEGY · PERFECT INFORMATION')}</span>
             </div>
             <h1 style={{ color: C.deck, lineHeight: 1.1 }} className="text-3xl md:text-5xl font-bold mb-4">
-              You don&apos;t choose<br />
-              <span style={{ color: C.cyan }}>your cargo.</span><br />
-              Your opponent does.
+              {t("You don't choose")}<br />
+              <span style={{ color: C.cyan }}>{t('your cargo.')}</span><br />
+              {t('Your opponent does.')}
             </h1>
             <p style={{ color: C.steel }} className="text-sm md:text-base leading-relaxed mb-8 max-w-md">
-              PuzzleStow is a strategy game of perfect information. 27 fixed figures, sizes 1 to 7 cells.
-              A 15×10 container. Your opponent selects which piece you must place next.
+              {t('PuzzleStow is a strategy game of perfect information. 27 fixed figures, sizes 1 to 7 cells. A 15×10 container. Your opponent selects which piece you must place next.')}
             </p>
             {/* Part H: flex-wrap for mobile button row */}
             <div className="flex flex-wrap gap-3 mb-10">
               <button onClick={() => setPage('play')}
                 style={{ background: C.cyan, color: C.graphite, fontWeight: 600 }}
-                className="px-5 py-3 text-sm hover:brightness-110 transition-all">Play Rated</button>
+                className="px-5 py-3 text-sm hover:brightness-110 transition-all">{t('Play Rated')}</button>
               <button onClick={() => setPage('practice')}
                 style={{ border: `1px solid ${C.blue}`, color: C.deck }}
-                className="px-5 py-3 text-sm hover:bg-blue-900/20 transition-all">Practice</button>
+                className="px-5 py-3 text-sm hover:bg-blue-900/20 transition-all">{t('Practice')}</button>
               <button onClick={() => setPage('sandbox')}
                 style={{ border: `1px solid ${C.steelDim}`, color: C.steel }}
-                className="px-5 py-3 text-sm hover:border-steel hover:text-deck transition-all">Sandbox</button>
+                className="px-5 py-3 text-sm hover:border-steel hover:text-deck transition-all">{t('Sandbox')}</button>
             </div>
             <div style={{ borderLeft: `2px solid ${C.blue}`, paddingLeft: 14 }}>
-              <p style={{ color: C.steelDim, fontSize: 11, fontFamily: "'JetBrains Mono',monospace", marginBottom: 4 }}>SAMPLE MOVE NOTATION</p>
+              <p style={{ color: C.steelDim, fontSize: 11, fontFamily: "'JetBrains Mono',monospace", marginBottom: 4 }}>{t('SAMPLE MOVE NOTATION')}</p>
               <code style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 15 }}>07B9C10</code>
-              <span style={{ color: C.steelDim, fontSize: 12 }} className="ml-3 hidden sm:inline">figure 7, placed B9→C10</span>
+              <span style={{ color: C.steelDim, fontSize: 12 }} className="ml-3 hidden sm:inline">{t('figure 7, placed B9→C10')}</span>
             </div>
           </div>
 
@@ -878,7 +881,7 @@ function HomePage({ setPage }: { setPage: (p: Page) => void }) {
           <div className="flex flex-col items-start md:items-end gap-3">
             <div style={{ border: `1px solid ${C.cyan}28`, padding: 12, background: C.graphite2 }} className="relative overflow-hidden">
               <div style={{ position: 'absolute', top: 6, left: 10, fontFamily: "'JetBrains Mono',monospace", fontSize: 9, color: `${C.cyan}60`, letterSpacing: '0.1em' }}>
-                CONTAINER 15×11 — TRAINING VIEW
+                CONTAINER 15×11 — {t('TRAINING VIEW')}
               </div>
               {/* Part H: overflow-x-auto wrapper for mobile */}
               <div style={{ marginTop: 14 }} className="overflow-x-auto">
@@ -887,24 +890,24 @@ function HomePage({ setPage }: { setPage: (p: Page) => void }) {
             </div>
             <div className="flex items-center gap-4 text-xs flex-wrap">
               <span className="flex items-center gap-1.5" style={{ color: C.green }}>
-                <span style={{ background: C.green }} className="inline-block w-3 h-3" />Row A closed
+                <span style={{ background: C.green }} className="inline-block w-3 h-3" />{t('Row A closed')}
               </span>
               <span className="flex items-center gap-1.5" style={{ color: C.steel }}>
-                <span style={{ background: `${C.blue}18`, border: `1.5px solid ${C.blue}` }} className="inline-block w-3 h-3" />Placed
+                <span style={{ background: `${C.blue}18`, border: `1.5px solid ${C.blue}` }} className="inline-block w-3 h-3" />{t('Placed')}
               </span>
               <span className="flex items-center gap-1.5" style={{ color: C.cyan }}>
-                <span style={{ background: C.cyan }} className="inline-block w-2 h-2 rounded-full" />Entry A0
+                <span style={{ background: C.cyan }} className="inline-block w-2 h-2 rounded-full" />{t('Entry A0')}
               </span>
             </div>
             <div style={{ border: `1px solid ${C.cyan}28`, background: `${C.graphite2}cc`, padding: '8px 12px', maxWidth: 360, fontSize: 12, color: C.steelDim }}>
               <span style={{ color: C.cyan }}>— — —</span>
-              {' '}This extra row is yours while you&apos;re learning to stack. Once you&apos;ve got it, you&apos;ll play on 15×10 like everyone else — and this line becomes the ceiling.
+              {' '}{t("This extra row is yours while you're learning to stack. Once you've got it, you'll play on 15×10 like everyone else — and this line becomes the ceiling.")}
             </div>
             <div style={{ border: `1px solid ${C.blue}55`, padding: '7px 12px', background: `${C.blue}18` }}
               className="flex items-center gap-3 w-full">
-              <span style={{ color: C.steelDim, fontSize: 10, fontFamily: "'JetBrains Mono',monospace" }}>INCOMING</span>
+              <span style={{ color: C.steelDim, fontSize: 10, fontFamily: "'JetBrains Mono',monospace" }}>{t('INCOMING')}</span>
               <FigurePreview cells={FIGURES[13].cells} cardSize={32} color={C.cyan} dots={FIGURES[13].dots} number={FIGURES[13].id} />
-              <span style={{ color: C.cyan, fontSize: 11, fontFamily: "'JetBrains Mono',monospace" }}>F14 — chosen by opponent</span>
+              <span style={{ color: C.cyan, fontSize: 11, fontFamily: "'JetBrains Mono',monospace" }}>{t('F14 — chosen by opponent')}</span>
             </div>
           </div>
         </div>
@@ -913,12 +916,10 @@ function HomePage({ setPage }: { setPage: (p: Page) => void }) {
       {/* Core Twist */}
       <section style={{ background: C.graphite2, borderTop: `1px solid ${C.cyan}18`, borderBottom: `1px solid ${C.cyan}18` }} className="py-14">
         <div className="max-w-5xl mx-auto px-4 md:px-6 text-center">
-          <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.14em' }} className="mb-4">WHAT MAKES IT DIFFERENT</p>
-          <h2 style={{ color: C.deck, lineHeight: 1.2 }} className="text-2xl md:text-4xl font-bold mb-5">Strategy. Geometry. Honest play.</h2>
+          <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.14em' }} className="mb-4">{t('WHAT MAKES IT DIFFERENT')}</p>
+          <h2 style={{ color: C.deck, lineHeight: 1.2 }} className="text-2xl md:text-4xl font-bold mb-5">{t('Strategy. Geometry. Honest play.')}</h2>
           <p style={{ color: C.steel }} className="text-sm md:text-base max-w-2xl mx-auto leading-relaxed">
-            Most games let you choose your own moves. PuzzleStow inverts this —
-            your opponent selects the piece that enters your container, and you must place it legally.
-            Perfect information means both players see everything. No fog of war. No luck. Only geometry and foresight.
+            {t('Most games let you choose your own moves. PuzzleStow inverts this — your opponent selects the piece that enters your container, and you must place it legally. Perfect information means both players see everything. No fog of war. No luck. Only geometry and foresight.')}
           </p>
         </div>
       </section>
@@ -927,19 +928,19 @@ function HomePage({ setPage }: { setPage: (p: Page) => void }) {
       <section className="py-20">
         <div className="max-w-7xl mx-auto px-4 md:px-6">
           <div className="mb-12">
-            <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.14em' }} className="mb-3">HOW IT WORKS</p>
-            <h2 style={{ color: C.deck }} className="text-2xl font-semibold">Four rules govern every move</h2>
+            <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.14em' }} className="mb-3">{t('HOW IT WORKS')}</p>
+            <h2 style={{ color: C.deck }} className="text-2xl font-semibold">{t('Four rules govern every move')}</h2>
           </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {[
-              { rule: '01', name: 'Support', color: C.cyan, Icon: SupportIcon,
-                desc: 'No piece may float. It must rest on base row A or on an already-placed piece.' },
-              { rule: '02', name: 'Steps', color: C.blue, Icon: StepsIcon,
-                desc: 'Height difference between adjacent columns must not exceed 3 cells.' },
-              { rule: '03', name: 'Overhang', color: '#7c9dbf', Icon: OverhangIcon,
-                desc: 'More than 50% of a piece\'s area unsupported is not allowed by default. Exceeding it requires the bilateral fair-play exception.' },
-              { rule: '04', name: 'Return Path', color: C.green, Icon: PathIcon,
-                desc: 'After placing a piece, a passable path back to exit A0 must remain open.' },
+              { rule: '01', name: t('Support'), color: C.cyan, Icon: SupportIcon,
+                desc: t('No piece may float. It must rest on base row A or on an already-placed piece.') },
+              { rule: '02', name: t('Steps'), color: C.blue, Icon: StepsIcon,
+                desc: t('Height difference between adjacent columns must not exceed 3 cells.') },
+              { rule: '03', name: t('Overhang'), color: '#7c9dbf', Icon: OverhangIcon,
+                desc: t("More than 50% of a piece's area unsupported is not allowed by default. Exceeding it requires the bilateral fair-play exception.") },
+              { rule: '04', name: t('Return Path'), color: C.green, Icon: PathIcon,
+                desc: t('After placing a piece, a passable path back to exit A0 must remain open.') },
             ].map(({ rule, name, color, Icon, desc }) => (
               <div key={rule} style={{ border: `1px solid ${color}30`, background: C.graphite2 }} className="p-6 flex flex-col gap-4">
                 <div className="flex items-start justify-between">
@@ -959,13 +960,13 @@ function HomePage({ setPage }: { setPage: (p: Page) => void }) {
         <div className="max-w-7xl mx-auto px-4 md:px-6">
           <div className="flex items-end justify-between mb-10">
             <div>
-              <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.14em' }} className="mb-3">FIGURE CATALOG</p>
-              <h2 style={{ color: C.deck }} className="text-2xl font-semibold">27 distinct figures</h2>
-              <p style={{ color: C.steel }} className="text-sm mt-1">Sizes 1 to 7 cells — each with up to 4 orientations.</p>
+              <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.14em' }} className="mb-3">{t('FIGURE CATALOG')}</p>
+              <h2 style={{ color: C.deck }} className="text-2xl font-semibold">{t('27 distinct figures')}</h2>
+              <p style={{ color: C.steel }} className="text-sm mt-1">{t('Sizes 1 to 7 cells — each with up to 4 orientations.')}</p>
             </div>
             <button onClick={() => setPage('figures')}
               style={{ color: C.cyan, border: `1px solid ${C.cyan}40`, fontFamily: "'JetBrains Mono',monospace" }}
-              className="hidden md:flex px-4 py-2 text-xs hover:bg-cyan-900/10 transition-all">View all 27 →</button>
+              className="hidden md:flex px-4 py-2 text-xs hover:bg-cyan-900/10 transition-all">{t('View all 27 →')}</button>
           </div>
           <div className="grid grid-cols-5 sm:grid-cols-7 md:grid-cols-9 gap-2">
             {FIGURES.slice(0, 18).map(fig => (
@@ -983,7 +984,7 @@ function HomePage({ setPage }: { setPage: (p: Page) => void }) {
             </button>
           </div>
           <div className="mt-5 md:hidden">
-            <button onClick={() => setPage('figures')} style={{ color: C.cyan, border: `1px solid ${C.cyan}40` }} className="px-4 py-2 text-xs">View all 27 →</button>
+            <button onClick={() => setPage('figures')} style={{ color: C.cyan, border: `1px solid ${C.cyan}40` }} className="px-4 py-2 text-xs">{t('View all 27 →')}</button>
           </div>
         </div>
       </section>
@@ -992,9 +993,9 @@ function HomePage({ setPage }: { setPage: (p: Page) => void }) {
       <section className="py-20">
         <div className="max-w-7xl mx-auto px-4 md:px-6">
           <div className="mb-10">
-            <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.14em' }} className="mb-3">QUALIFICATION</p>
-            <h2 style={{ color: C.deck }} className="text-2xl font-semibold">The Lodar Path</h2>
-            <p style={{ color: C.steel }} className="text-sm mt-2 max-w-xl">Seven tiers of verified ability, earned through rated play alone. No shortcuts, no purchases, no hint engines.</p>
+            <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.14em' }} className="mb-3">{t('QUALIFICATION')}</p>
+            <h2 style={{ color: C.deck }} className="text-2xl font-semibold">{t('The Lodar Path')}</h2>
+            <p style={{ color: C.steel }} className="text-sm mt-2 max-w-xl">{t('Seven tiers of verified ability, earned through rated play alone. No shortcuts, no purchases, no hint engines.')}</p>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
             {TIERS.map(tier => (
@@ -1005,7 +1006,7 @@ function HomePage({ setPage }: { setPage: (p: Page) => void }) {
                   <span style={{ color: C.graphite, fontSize: 9, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace" }}>{tier.abbr}</span>
                 </div>
                 <p style={{ color: tier.color, fontSize: 12, fontWeight: 600, marginBottom: 4 }}>{tier.name}</p>
-                <p style={{ color: C.steelDim, fontSize: 11, lineHeight: 1.5 }}>{tier.desc}</p>
+                <p style={{ color: C.steelDim, fontSize: 11, lineHeight: 1.5 }}>{t(tier.desc)}</p>
               </div>
             ))}
           </div>
@@ -1017,15 +1018,13 @@ function HomePage({ setPage }: { setPage: (p: Page) => void }) {
         <div className="max-w-4xl mx-auto px-4 md:px-6">
           <div style={{ borderLeft: `3px solid ${C.cyan}`, paddingLeft: 24 }}>
             <blockquote style={{ color: C.deck, lineHeight: 1.3 }} className="text-xl md:text-3xl font-semibold mb-5">
-              &ldquo;Qualification is your real level of thinking —<br />
-              <span style={{ color: C.cyan }}>not access to a hint.&rdquo;</span>
+              &ldquo;{t('Qualification is your real level of thinking —')}<br />
+              <span style={{ color: C.cyan }}>{t('not access to a hint.')}&rdquo;</span>
             </blockquote>
             <p style={{ color: C.steel }} className="text-sm md:text-base leading-relaxed mb-4 max-w-2xl">
-              There is no AI move-advisor in rated play. Not free. Not premium. Not ever.
-              Practice and Sandbox modes offer a built-in algorithmic engine opponent for unrated training only,
-              and are clearly separated from the rated experience at all times.
+              {t('There is no AI move-advisor in rated play. Not free. Not premium. Not ever. Practice and Sandbox modes offer a built-in algorithmic engine opponent for unrated training only, and are clearly separated from the rated experience at all times.')}
             </p>
-            <p style={{ color: C.steelDim, fontSize: 13 }}>If you come from chess or Go and are tired of engine-assisted ratings, PuzzleStow is built for you.</p>
+            <p style={{ color: C.steelDim, fontSize: 13 }}>{t('If you come from chess or Go and are tired of engine-assisted ratings, PuzzleStow is built for you.')}</p>
           </div>
         </div>
       </section>
@@ -1033,19 +1032,19 @@ function HomePage({ setPage }: { setPage: (p: Page) => void }) {
       {/* Game Modes — Part B: "AI" → "built-in engine opponent" */}
       <section className="py-20">
         <div className="max-w-7xl mx-auto px-4 md:px-6">
-          <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.14em' }} className="mb-3">GAME MODES</p>
-          <h2 style={{ color: C.deck }} className="text-2xl font-semibold mb-8">Three ways to play</h2>
+          <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.14em' }} className="mb-3">{t('GAME MODES')}</p>
+          <h2 style={{ color: C.deck }} className="text-2xl font-semibold mb-8">{t('Three ways to play')}</h2>
           <div className="grid sm:grid-cols-3 gap-6">
             {[
-              { name: 'Rated Play', tag: 'TOURNAMENT', color: C.cyan, border: C.cyan, badge: 'Affects rating', badgeColor: C.cyan,
-                desc: 'Two players on a 15×10 container (rows A–J). Your opponent picks your piece. Server-confirmed rules. Results affect your Lodar qualification.',
+              { name: t('Rated Play'), tag: t('TOURNAMENT'), color: C.cyan, border: C.cyan, badge: t('Affects rating'), badgeColor: C.cyan,
+                desc: t('Two players on a 15×10 container (rows A–J). Your opponent picks your piece. Server-confirmed rules. Results affect your Lodar qualification.'),
                 containerLabel: '15×10', page: 'play' as Page },
-              { name: 'Practice', tag: 'UNRATED', color: '#7c9dbf', border: C.blue, badge: 'No rating effect', badgeColor: C.steelDim,
-                desc: 'Play against the built-in engine opponent on a 15×10 container, mirroring the real game mechanic. Unrated — results do not affect qualification.',
+              { name: t('Practice'), tag: t('UNRATED'), color: '#7c9dbf', border: C.blue, badge: t('No rating effect'), badgeColor: C.steelDim,
+                desc: t('Play against the built-in engine opponent on a 15×10 container, mirroring the real game mechanic. Unrated — results do not affect qualification.'),
                 containerLabel: '15×10', page: 'practice' as Page },
-              { name: 'Sandbox', tag: 'FREE', color: C.steel, border: C.steelDim, badge: 'No rating effect', badgeColor: C.steelDim,
-                desc: 'Free placement on the 15×11 training container (rows A–K). Toggle rule highlights independently. The bold J/K line marks the competitive ceiling.',
-                containerLabel: '15×11 + J/K line', page: 'sandbox' as Page },
+              { name: t('Sandbox'), tag: t('FREE'), color: C.steel, border: C.steelDim, badge: t('No rating effect'), badgeColor: C.steelDim,
+                desc: t('Free placement on the 15×11 training container (rows A–K). Toggle rule highlights independently. The bold J/K line marks the competitive ceiling.'),
+                containerLabel: t('15×11 + J/K line'), page: 'sandbox' as Page },
             ].map(mode => (
               <div key={mode.name} style={{ border: `1px solid ${mode.border}35`, background: C.graphite2 }} className="p-6 flex flex-col gap-4">
                 <div className="flex items-center justify-between">
@@ -1058,7 +1057,7 @@ function HomePage({ setPage }: { setPage: (p: Page) => void }) {
                   <span style={{ color: mode.color, border: `1px solid ${mode.border}40`, fontFamily: "'JetBrains Mono',monospace", fontSize: 10, padding: '2px 8px' }}>{mode.containerLabel}</span>
                   <button onClick={() => setPage(mode.page)}
                     style={{ color: mode.color, border: `1px solid ${mode.border}50` }}
-                    className="text-xs px-4 py-2 hover:bg-white/5 transition-all">Enter →</button>
+                    className="text-xs px-4 py-2 hover:bg-white/5 transition-all">{t('Enter →')}</button>
                 </div>
               </div>
             ))}
@@ -1070,25 +1069,24 @@ function HomePage({ setPage }: { setPage: (p: Page) => void }) {
       <section style={{ background: `${C.blue}22`, borderTop: `1px solid ${C.blue}50`, borderBottom: `1px solid ${C.blue}50` }} className="py-14">
         <div className="max-w-5xl mx-auto px-4 md:px-6 grid md:grid-cols-2 gap-10 items-center">
           <div>
-            <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.14em' }} className="mb-3">FROM THE GAME TO REAL WORK</p>
-            <h2 style={{ color: C.deck }} className="text-2xl font-semibold mb-4">Your loader persona connects to PairSec</h2>
+            <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.14em' }} className="mb-3">{t('FROM THE GAME TO REAL WORK')}</p>
+            <h2 style={{ color: C.deck }} className="text-2xl font-semibold mb-4">{t('Your loader persona connects to PairSec')}</h2>
             <p style={{ color: C.steel }} className="text-sm leading-relaxed mb-5">
-              The in-game &ldquo;loader / грузчик&rdquo; identity ties directly to the &ldquo;Грузанём!&rdquo; service on PairSec.
-              MidLod qualification and above converts into verified performer status on the platform.
+              {t('The in-game “loader / грузчик” identity ties directly to the “Грузанём!” service on PairSec. MidLod qualification and above converts into verified performer status on the platform.')}
             </p>
             <a href="https://pair-sec.com" target="_blank" rel="noopener noreferrer"
               style={{ color: C.cyan, border: `1px solid ${C.cyan}50` }}
               className="inline-flex items-center gap-2 px-4 py-2 text-sm hover:bg-cyan-900/10 transition-all">
-              What is PairSec → pair-sec.com
+              {t('What is PairSec → pair-sec.com')}
             </a>
           </div>
           <div style={{ border: `1px solid ${C.blue}50`, background: `${C.graphite}80`, padding: 20 }}>
-            <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: C.steelDim, marginBottom: 14, letterSpacing: '0.1em' }}>QUALIFICATION BRIDGE</div>
+            <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: C.steelDim, marginBottom: 14, letterSpacing: '0.1em' }}>{t('QUALIFICATION BRIDGE')}</div>
             {[
-              { from: 'UnderLodar – Lodar', to: 'PairSec observer' },
-              { from: 'MidLod+', to: '"Грузанём!" performer listing', active: true },
-              { from: 'LeadLod+', to: 'Verified specialist badge', active: true },
-              { from: 'ProfiLod', to: 'Judge / Consultant bookings', active: true },
+              { from: 'UnderLodar – Lodar', to: t('PairSec observer') },
+              { from: 'MidLod+', to: t('“Грузанём!” performer listing'), active: true },
+              { from: 'LeadLod+', to: t('Verified specialist badge'), active: true },
+              { from: 'ProfiLod', to: t('Judge / Consultant bookings'), active: true },
             ].map((row, i) => (
               <div key={i} className="flex items-center gap-3 py-2.5"
                 style={{ borderBottom: i < 3 ? `1px solid ${C.cyan}12` : 'none' }}>
@@ -1104,17 +1102,17 @@ function HomePage({ setPage }: { setPage: (p: Page) => void }) {
       {/* FAQ */}
       <section className="py-20">
         <div className="max-w-3xl mx-auto px-4 md:px-6">
-          <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.14em' }} className="mb-3">FAQ</p>
-          <h2 style={{ color: C.deck }} className="text-2xl font-semibold mb-8">Common questions</h2>
+          <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.14em' }} className="mb-3">{t('FAQ')}</p>
+          <h2 style={{ color: C.deck }} className="text-2xl font-semibold mb-8">{t('Common questions')}</h2>
           <div style={{ borderTop: `1px solid ${C.cyan}18` }}>
             {FAQ.map((item, i) => (
               <div key={i} style={{ borderBottom: `1px solid ${C.cyan}18` }}>
                 <button onClick={() => setFaqOpen(faqOpen === i ? null : i)}
                   className="w-full flex items-center justify-between py-5 text-left gap-4">
-                  <span style={{ color: C.deck }} className="text-sm font-medium">{item.q}</span>
+                  <span style={{ color: C.deck }} className="text-sm font-medium">{t(item.q)}</span>
                   <span style={{ color: C.cyan, fontSize: 20, lineHeight: 1, flexShrink: 0, transition: 'transform 0.2s', transform: faqOpen === i ? 'rotate(45deg)' : 'none' }}>+</span>
                 </button>
-                {faqOpen === i && <p style={{ color: C.steel }} className="text-sm leading-relaxed pb-5">{item.a}</p>}
+                {faqOpen === i && <p style={{ color: C.steel }} className="text-sm leading-relaxed pb-5">{t(item.a)}</p>}
               </div>
             ))}
           </div>
@@ -1132,14 +1130,14 @@ function HomePage({ setPage }: { setPage: (p: Page) => void }) {
                 </div>
                 <span style={{ fontFamily: "'JetBrains Mono',monospace", color: C.deck, letterSpacing: '0.06em' }} className="text-sm font-medium">PUZZLESTOW</span>
               </div>
-              <p style={{ color: C.steelDim, fontSize: 13, lineHeight: 1.6 }}>Digital version of &ldquo;Отгрузка&rdquo; (Shipload). A strategy game for people who think.</p>
+              <p style={{ color: C.steelDim, fontSize: 13, lineHeight: 1.6 }}>{t('Digital version of “Отгрузка” (Shipload). A strategy game for people who think.')}</p>
             </div>
             <div>
-              <p style={{ color: C.steel, fontSize: 11, fontFamily: "'JetBrains Mono',monospace", letterSpacing: '0.1em' }} className="mb-4">NAVIGATE</p>
+              <p style={{ color: C.steel, fontSize: 11, fontFamily: "'JetBrains Mono',monospace", letterSpacing: '0.1em' }} className="mb-4">{t('NAVIGATE')}</p>
               {([
-                { label: 'Play', p: 'play' }, { label: 'Figures', p: 'figures' },
-                { label: 'Rules', p: 'rules' }, { label: 'Lore', p: 'lore' },
-                { label: 'Print & Play', p: 'printplay' },
+                { label: t('Play'), p: 'play' }, { label: t('Figures'), p: 'figures' },
+                { label: t('Rules'), p: 'rules' }, { label: t('Lore'), p: 'lore' },
+                { label: t('Print & Play'), p: 'printplay' },
               ] as { label: string; p: Page }[]).map(l => (
                 <button key={l.p} onClick={() => setPage(l.p)}
                   style={{ color: C.steelDim, fontSize: 13, display: 'block', textAlign: 'left' }}
@@ -1147,9 +1145,9 @@ function HomePage({ setPage }: { setPage: (p: Page) => void }) {
               ))}
             </div>
             <div>
-              <p style={{ color: C.steel, fontSize: 11, fontFamily: "'JetBrains Mono',monospace", letterSpacing: '0.1em' }} className="mb-4">ACCOUNT</p>
+              <p style={{ color: C.steel, fontSize: 11, fontFamily: "'JetBrains Mono',monospace", letterSpacing: '0.1em' }} className="mb-4">{t('ACCOUNT')}</p>
               {([
-                { label: 'Sign In / Sign Up', p: 'auth' }, { label: 'Profile', p: 'profile' },
+                { label: t('Sign In / Sign Up'), p: 'auth' }, { label: t('Profile'), p: 'profile' },
               ] as { label: string; p: Page }[]).map(l => (
                 <button key={l.p} onClick={() => setPage(l.p)}
                   style={{ color: C.steelDim, fontSize: 13, display: 'block', textAlign: 'left' }}
@@ -1172,14 +1170,15 @@ function HomePage({ setPage }: { setPage: (p: Page) => void }) {
 function FiguresPage() {
   const [selected, setSelected] = useState<Figure | null>(null)
   const [orientation, setOrientation] = useState(0)
+  const { t } = useLang()
   const orientations = selected ? getOrientations(selected.cells) : []
 
   return (
     <div style={{ background: C.graphite, minHeight: '100vh', paddingTop: '3.5rem' }}>
       <div className="max-w-7xl mx-auto px-4 md:px-6 py-14">
         <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.14em' }} className="mb-3">FIGURE CATALOG</p>
-        <h1 style={{ color: C.deck }} className="text-3xl font-bold mb-3">All 27 Figures</h1>
-        <p style={{ color: C.steel }} className="text-sm mb-10 max-w-xl">Sizes 1 to 7 cells. Figure #25 is the only 7-cell piece (Heptomino-H). Click any figure to see all valid orientations.</p>
+        <h1 style={{ color: C.deck }} className="text-3xl font-bold mb-3">{t('All 27 Figures')}</h1>
+        <p style={{ color: C.steel }} className="text-sm mb-10 max-w-xl">{t('Sizes 1 to 7 cells. Figure #25 is the only 7-cell piece (Heptomino-H). Click any figure to see all valid orientations.')}</p>
         <div className="grid grid-cols-9 gap-2 mb-8">
           {FIGURES.map(fig => (
             <button key={fig.id} onClick={() => { setSelected(fig); setOrientation(0) }}
@@ -1199,14 +1198,14 @@ function FiguresPage() {
                 <div className="flex items-center gap-4 mb-6">
                   <span style={{ background: C.cyan, color: C.graphite, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, fontWeight: 700 }} className="px-3 py-1">{selected.label}</span>
                   <h2 style={{ color: C.deck }} className="text-xl font-semibold">{selected.name}</h2>
-                  <span style={{ color: C.steelDim, fontSize: 13 }}>{selected.size} {selected.size === 1 ? 'cell' : 'cells'}</span>
+                  <span style={{ color: C.steelDim, fontSize: 13 }}>{selected.size} {selected.size === 1 ? t('cell') : t('cells')}</span>
                 </div>
                 <div style={{ border: `1px solid ${C.cyan}22`, background: C.graphite, display: 'inline-block', padding: 20 }}>
                   <FigurePreview cells={selected.cells} cardSize={120} color={C.cyan} cellPx={20} dots={selected.dots} number={selected.id} />
                 </div>
               </div>
               <div>
-                <p style={{ color: C.steel, fontSize: 13, fontFamily: "'JetBrains Mono',monospace", letterSpacing: '0.1em', marginBottom: 14 }}>ORIENTATIONS ({orientations.length} unique)</p>
+                <p style={{ color: C.steel, fontSize: 13, fontFamily: "'JetBrains Mono',monospace", letterSpacing: '0.1em', marginBottom: 14 }}>{t('ORIENTATIONS ({n} unique)', { n: orientations.length })}</p>
                 <div className="flex flex-wrap gap-3">
                   {orientations.map((cells, i) => (
                     <button key={i} onClick={() => setOrientation(i)}
@@ -1218,7 +1217,7 @@ function FiguresPage() {
                   ))}
                 </div>
                 <div style={{ marginTop: 18, padding: '12px 16px', background: `${C.blue}18`, border: `1px solid ${C.blue}40` }}>
-                  <p style={{ color: C.steelDim, fontSize: 11, fontFamily: "'JetBrains Mono',monospace", marginBottom: 6 }}>BOUNDING BOX ({orientation * 90}°)</p>
+                  <p style={{ color: C.steelDim, fontSize: 11, fontFamily: "'JetBrains Mono',monospace", marginBottom: 6 }}>{t('BOUNDING BOX ({n}°)', { n: orientation * 90 })}</p>
                   {(() => {
                     const cells = orientations[orientation] || selected.cells
                     const r = cells.map(([row]) => row), c = cells.map(([, col]) => col)
@@ -1238,36 +1237,37 @@ function FiguresPage() {
 
 // ── Rules Page ────────────────────────────────────────────────────────────────
 function RulesPage() {
+  const { t } = useLang()
   const rules = [
-    { n: '01', name: 'Support', color: C.cyan, Icon: SupportIcon,
-      summary: 'No piece may float. Every cell must rest on base row A or be supported by a previously placed cell below it.',
-      detail: 'After placement, the server checks each occupied column. Any cell without support — from row A or another piece directly below — is a violation.' },
-    { n: '02', name: 'Steps (≤ 3)', color: C.blue, Icon: StepsIcon,
-      summary: 'Height difference between adjacent columns must not exceed 3 cells.',
-      detail: 'Steps ≤ 3 are passable. Steps > 3 form a wall that blocks the return path.' },
-    { n: '03', name: 'Overhang', color: '#7c9dbf', Icon: OverhangIcon,
-      summary: 'More than 50% of a piece\'s area unsupported after placement is not allowed by default.',
-      detail: 'When a placement would exceed the 50% unsupported threshold, the game shows a bilateral confirmation modal. Both players must actively accept before the move registers. It is never automatic or one-sided.',
+    { n: '01', name: t('Support'), color: C.cyan, Icon: SupportIcon,
+      summary: t('No piece may float. Every cell must rest on base row A or be supported by a previously placed cell below it.'),
+      detail: t('After placement, the server checks each occupied column. Any cell without support — from row A or another piece directly below — is a violation.') },
+    { n: '02', name: t('Steps (≤ 3)'), color: C.blue, Icon: StepsIcon,
+      summary: t('Height difference between adjacent columns must not exceed 3 cells.'),
+      detail: t('Steps ≤ 3 are passable. Steps > 3 form a wall that blocks the return path.') },
+    { n: '03', name: t('Overhang'), color: '#7c9dbf', Icon: OverhangIcon,
+      summary: t("More than 50% of a piece's area unsupported after placement is not allowed by default."),
+      detail: t('When a placement would exceed the 50% unsupported threshold, the game shows a bilateral confirmation modal. Both players must actively accept before the move registers. It is never automatic or one-sided.'),
       extra: (
         <div style={{ background: `${C.red}15`, border: `1px solid ${C.red}40`, padding: '12px 16px', marginTop: 12 }}>
-          <p style={{ color: C.red, fontSize: 12, fontFamily: "'JetBrains Mono',monospace", marginBottom: 6 }}>FAIR-PLAY EXCEPTION</p>
-          <p style={{ color: C.steel, fontSize: 13, lineHeight: 1.6 }}>Both players must confirm via bilateral modal before the exception is applied. Never automatic. Never one-sided. Move logged in match history.</p>
+          <p style={{ color: C.red, fontSize: 12, fontFamily: "'JetBrains Mono',monospace", marginBottom: 6 }}>{t('FAIR-PLAY EXCEPTION')}</p>
+          <p style={{ color: C.steel, fontSize: 13, lineHeight: 1.6 }}>{t('Both players must confirm via bilateral modal before the exception is applied. Never automatic. Never one-sided. Move logged in match history.')}</p>
         </div>
       ) },
-    { n: '04', name: 'Return Path', color: C.green, Icon: PathIcon,
-      summary: 'After every placement, a passable path must exist back to exit point A0.',
-      detail: 'Evaluated server-side after each move. If all routes to A0 are blocked, the move is illegal.' },
-    { n: '05', name: 'Row Closure', color: C.green, Icon: RowIcon,
-      summary: 'Win by closing 5 full rows (horizontal and/or vertical), or forcing the opponent into an impossible placement.',
-      detail: 'A full horizontal row (all 15 columns occupied) or a full vertical column (all rows in a column occupied) counts as one closure.' },
+    { n: '04', name: t('Return Path'), color: C.green, Icon: PathIcon,
+      summary: t('After every placement, a passable path must exist back to exit point A0.'),
+      detail: t('Evaluated server-side after each move. If all routes to A0 are blocked, the move is illegal.') },
+    { n: '05', name: t('Row Closure'), color: C.green, Icon: RowIcon,
+      summary: t('Win by closing 5 full rows (horizontal and/or vertical), or forcing the opponent into an impossible placement.'),
+      detail: t('A full horizontal row (all 15 columns occupied) or a full vertical column (all rows in a column occupied) counts as one closure.') },
   ]
 
   return (
     <div style={{ background: C.graphite, minHeight: '100vh', paddingTop: '3.5rem' }}>
       <div className="max-w-4xl mx-auto px-4 md:px-6 py-14">
-        <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.14em' }} className="mb-3">RULES</p>
-        <h1 style={{ color: C.deck }} className="text-3xl font-bold mb-4">Complete Rule Set</h1>
-        <p style={{ color: C.steel }} className="text-sm mb-12 max-w-2xl">All rules are authoritative server-side. The client displays server-confirmed state only — no client-side rules engine. This preserves anti-cheat integrity for all rated play.</p>
+        <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.14em' }} className="mb-3">{t('RULES')}</p>
+        <h1 style={{ color: C.deck }} className="text-3xl font-bold mb-4">{t('Complete Rule Set')}</h1>
+        <p style={{ color: C.steel }} className="text-sm mb-12 max-w-2xl">{t('All rules are authoritative server-side. The client displays server-confirmed state only — no client-side rules engine. This preserves anti-cheat integrity for all rated play.')}</p>
         <div className="flex flex-col gap-6">
           {rules.map(rule => (
             <div key={rule.n} style={{ border: `1px solid ${rule.color}30`, background: C.graphite2 }} className="p-6 md:p-8">
@@ -1275,7 +1275,7 @@ function RulesPage() {
                 <div className="shrink-0"><rule.Icon size={56} color={rule.color} /></div>
                 <div className="flex-1">
                   <div className="flex items-center gap-4 mb-3">
-                    <span style={{ color: rule.color, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>RULE {rule.n}</span>
+                    <span style={{ color: rule.color, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>{t('RULE {n}', { n: rule.n })}</span>
                     <h2 style={{ color: C.deck }} className="text-lg font-semibold">{rule.name}</h2>
                   </div>
                   <p style={{ color: C.deck }} className="text-sm leading-relaxed mb-2 font-medium">{rule.summary}</p>
@@ -1287,26 +1287,26 @@ function RulesPage() {
           ))}
         </div>
         <div style={{ marginTop: 36, border: `1px solid ${C.cyan}28`, background: C.graphite2, padding: 28 }}>
-          <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.14em', marginBottom: 18 }}>CONTAINER SPECIFICATION</p>
+          <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.14em', marginBottom: 18 }}>{t('CONTAINER SPECIFICATION')}</p>
           <div className="grid sm:grid-cols-2 gap-5 mb-7">
             {[
-              { mode: 'Rated Play / Practice', size: '15×10', rows: 'A–J (10 rows)', note: 'Standard competitive container. All rated matches and practice sessions.', color: C.cyan },
-              { mode: 'Sandbox', size: '15×11', rows: 'A–K (11 rows)', note: 'Training container with bold J/K separator — permanent feature, not a placeholder.', color: C.steel },
+              { mode: t('Rated Play / Practice'), size: '15×10', rows: t('A–J (10 rows)'), note: t('Standard competitive container. All rated matches and practice sessions.'), color: C.cyan },
+              { mode: t('Sandbox'), size: '15×11', rows: t('A–K (11 rows)'), note: t('Training container with bold J/K separator — permanent feature, not a placeholder.'), color: C.steel },
             ].map(spec => (
               <div key={spec.mode} style={{ border: `1px solid ${spec.color}30`, background: C.graphite, padding: 18 }}>
                 <p style={{ color: spec.color, fontSize: 11, fontFamily: "'JetBrains Mono',monospace", marginBottom: 6 }}>{spec.mode.toUpperCase()}</p>
                 <p style={{ color: C.deck, fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace", marginBottom: 3 }}>{spec.size}</p>
-                <p style={{ color: C.steel, fontSize: 13, marginBottom: 6 }}>Rows {spec.rows}</p>
+                <p style={{ color: C.steel, fontSize: 13, marginBottom: 6 }}>{t('Rows {rows}', { rows: spec.rows })}</p>
                 <p style={{ color: C.steelDim, fontSize: 12, lineHeight: 1.5 }}>{spec.note}</p>
               </div>
             ))}
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
             {[
-              { label: 'Width', value: '15 columns', sub: 'labeled 0–14' },
-              { label: 'Entry / Exit', value: 'A0', sub: 'bottom-left corner' },
-              { label: 'Axis', value: 'A = floor', sub: 'K = training ceiling' },
-              { label: 'Figures', value: '27 fixed', sub: 'sizes 1–7 cells' },
+              { label: t('Width'), value: t('15 columns'), sub: t('labeled 0–14') },
+              { label: t('Entry / Exit'), value: 'A0', sub: t('bottom-left corner') },
+              { label: t('Axis'), value: t('A = floor'), sub: t('K = training ceiling') },
+              { label: t('Figures'), value: t('27 fixed'), sub: t('sizes 1–7 cells') },
             ].map(s => (
               <div key={s.label}>
                 <p style={{ color: C.steelDim, fontSize: 11, fontFamily: "'JetBrains Mono',monospace", marginBottom: 4 }}>{s.label.toUpperCase()}</p>
@@ -1324,37 +1324,38 @@ function RulesPage() {
 // ── Lore Page ─────────────────────────────────────────────────────────────────
 function LorePage() {
   const [bOpen, setBOpen] = useState(false)
+  const { t } = useLang()
   return (
     <div style={{ background: '#161820', minHeight: '100vh', paddingTop: '3.5rem' }}>
       <div style={{ backgroundImage: `radial-gradient(circle at center,rgba(31,167,163,0.04) 1px,transparent 1.2px)`, backgroundSize: '20px 20px', minHeight: '100vh' }}>
         <div className="max-w-3xl mx-auto px-4 md:px-6 py-18">
-          <p style={{ color: `${C.cyan}80`, fontFamily: "'JetBrains Mono',monospace", fontSize: 10, letterSpacing: '0.2em' }} className="mb-8 pt-6">— THE LEGEND OF THE LODARS —</p>
-          <h1 style={{ color: C.deck, lineHeight: 1.2, fontSize: 34, fontWeight: 700 }} className="mb-10">The Legend<br /><span style={{ color: C.cyan }}>of the Lodars</span></h1>
+          <p style={{ color: `${C.cyan}80`, fontFamily: "'JetBrains Mono',monospace", fontSize: 10, letterSpacing: '0.2em' }} className="mb-8 pt-6">{t('— THE LEGEND OF THE LODARS —')}</p>
+          <h1 style={{ color: C.deck, lineHeight: 1.2, fontSize: 34, fontWeight: 700 }} className="mb-10">{t('The Legend')}<br /><span style={{ color: C.cyan }}>{t('of the Lodars')}</span></h1>
           <div style={{ borderLeft: `2px solid ${C.cyan}40`, paddingLeft: 22, marginBottom: 36 }}>
-            <p style={{ color: `${C.deck}cc`, fontSize: 16, lineHeight: 1.9, marginBottom: 20 }}>Long before the first shipping container was forged, the Lodars moved cargo across the great plateaus by a discipline that demanded both geometry and foresight. Each Lodar carried a table of 27 figures — memorized, not written — and a container drawn in chalk on stone.</p>
-            <p style={{ color: `${C.deck}cc`, fontSize: 16, lineHeight: 1.9, marginBottom: 20 }}>The opponent&apos;s right was the opponent&apos;s gift: to choose which shape entered your space. The wisdom of the Lodars was not in avoiding bad pieces — it was in finding the placement that left every path open, every row one step closer to closure.</p>
-            <p style={{ color: `${C.deck}cc`, fontSize: 16, lineHeight: 1.9 }}>There were seven ranks among them. An UnderLodar learned the names. A ProfiLod saw the container before the piece was called.</p>
+            <p style={{ color: `${C.deck}cc`, fontSize: 16, lineHeight: 1.9, marginBottom: 20 }}>{t('Long before the first shipping container was forged, the Lodars moved cargo across the great plateaus by a discipline that demanded both geometry and foresight. Each Lodar carried a table of 27 figures — memorized, not written — and a container drawn in chalk on stone.')}</p>
+            <p style={{ color: `${C.deck}cc`, fontSize: 16, lineHeight: 1.9, marginBottom: 20 }}>{t("The opponent's right was the opponent's gift: to choose which shape entered your space. The wisdom of the Lodars was not in avoiding bad pieces — it was in finding the placement that left every path open, every row one step closer to closure.")}</p>
+            <p style={{ color: `${C.deck}cc`, fontSize: 16, lineHeight: 1.9 }}>{t('There were seven ranks among them. An UnderLodar learned the names. A ProfiLod saw the container before the piece was called.')}</p>
           </div>
           <div style={{ borderLeft: `2px solid ${C.steelDim}`, paddingLeft: 22, marginBottom: 36 }}>
-            <p style={{ color: C.steelDim, fontSize: 14, lineHeight: 1.8, fontStyle: 'italic' }}>&ldquo;Qualification is your real level of thinking. Not access to a hint.&rdquo;</p>
-            <p style={{ color: C.steelDim, fontSize: 12, marginTop: 8, fontFamily: "'JetBrains Mono',monospace" }}>— attributed to the first MasterLod</p>
+            <p style={{ color: C.steelDim, fontSize: 14, lineHeight: 1.8, fontStyle: 'italic' }}>{t('“Qualification is your real level of thinking. Not access to a hint.”')}</p>
+            <p style={{ color: C.steelDim, fontSize: 12, marginTop: 8, fontFamily: "'JetBrains Mono',monospace" }}>{t('— attributed to the first MasterLod')}</p>
           </div>
           <div style={{ border: `1px solid ${C.steelDim}30`, background: `${C.graphite2}80`, padding: 22, marginBottom: 28 }}>
             <div className="flex items-center justify-between mb-3">
-              <p style={{ color: C.steelDim, fontSize: 11, fontFamily: "'JetBrains Mono',monospace", letterSpacing: '0.12em' }}>ПРАЛОГ</p>
+              <p style={{ color: C.steelDim, fontSize: 11, fontFamily: "'JetBrains Mono',monospace", letterSpacing: '0.12em' }}>{t('ПРАЛОГ')}</p>
               <button onClick={() => setBOpen(!bOpen)} style={{ color: C.cyan, fontSize: 11, fontFamily: "'JetBrains Mono',monospace" }}>
-                {bOpen ? '− згарнуць' : '+ разгарнуць'}
+                {bOpen ? t('− згарнуць') : t('+ разгарнуць')}
               </button>
             </div>
             {bOpen && (
               <>
-                <p style={{ color: `${C.deck}bb`, fontSize: 15, lineHeight: 1.9, marginBottom: 14 }}>Пасланне ад старажытных Лодараў:</p>
-                <p style={{ color: `${C.deck}bb`, fontSize: 15, lineHeight: 1.9, fontStyle: 'italic' }}>«Мы спадзяемся, што вам хопіць тысячагоддзя, можа быць, два, каб атрымаць першапачатковыя веды, якія ў канчатковым выніку прывядуць вас да ўсіх сакрэтаў складання рэчаў. Гэтыя 27 прадметаў прадстаўлены вам у выглядзе гульні, у якой удзельнічаюць два гульцы: адзін угадвае і кажа, што трэба пакласці, іншы, ламае галаву над тым, як гэта пакласці, і наадварот. Такі падвойны мазгавы штурм дасць вам вынік хутчэй, чым складанне за ўсё ў адну галаву. Не забывайце пра час, які праходзіць паміж ітэрацыямі складання рэчаў. Дзесьці паскорце працэс, дзесьці прытармазіце ці стабілізуйце.»</p>
+                <p style={{ color: `${C.deck}bb`, fontSize: 15, lineHeight: 1.9, marginBottom: 14 }}>{t('Пасланне ад старажытных Лодараў:')}</p>
+                <p style={{ color: `${C.deck}bb`, fontSize: 15, lineHeight: 1.9, fontStyle: 'italic' }}>{t('«Мы спадзяемся, што вам хопіць тысячагоддзя, можа быць, два, каб атрымаць першапачатковыя веды, якія ў канчатковым выніку прывядуць вас да ўсіх сакрэтаў складання рэчаў. Гэтыя 27 прадметаў прадстаўлены вам у выглядзе гульні, у якой удзельнічаюць два гульцы: адзін угадвае і кажа, што трэба пакласці, іншы, ламае галаву над тым, як гэта пакласці, і наадварот. Такі падвойны мазгавы штурм дасць вам вынік хутчэй, чым складанне за ўсё ў адну галаву. Не забывайце пра час, які праходзіць паміж ітэрацыямі складання рэчаў. Дзесьці паскорце працэс, дзесьці прытармазіце ці стабілізуйце.»')}</p>
               </>
             )}
           </div>
           <div style={{ borderTop: `1px solid ${C.cyan}18`, paddingTop: 28 }}>
-            <p style={{ color: C.steelDim, fontSize: 13 }}>The full Legend of the Lodars is an ongoing narrative developed alongside the game&apos;s community. Follow the Telegram channel for new chapters.</p>
+            <p style={{ color: C.steelDim, fontSize: 13 }}>{t("The full Legend of the Lodars is an ongoing narrative developed alongside the game's community. Follow the Telegram channel for new chapters.")}</p>
           </div>
         </div>
       </div>
@@ -1400,6 +1401,7 @@ const OPP_CLOSED = new Set([9, 8])
 function PlayPage({ mode = 'rated' }: { mode?: 'rated' | 'practice' }) {
   const [rotIdx, setRotIdx] = useState(0)
   const [notation, setNotation] = useState('')
+  const { t } = useLang()
   const incomingFig = FIGURES[15]
   const orientations = getOrientations(incomingFig.cells)
   const curOri = orientations[rotIdx % orientations.length]
@@ -1412,19 +1414,19 @@ function PlayPage({ mode = 'rated' }: { mode?: 'rated' | 'practice' }) {
         className="px-4 md:px-6 py-3 flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-4 flex-wrap">
           <span style={{ background: `${C.cyan}22`, color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, padding: '3px 10px' }}>
-            {isPractice ? 'TRAINING SESSION' : 'YOUR TURN'}
+            {isPractice ? t('TRAINING SESSION') : t('YOUR TURN')}
           </span>
           <span style={{ color: C.deck, fontSize: 13 }}>
-            Place <span style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace" }}>F16</span>
+            {t('Place')} <span style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace" }}>F16</span>
           </span>
           {isPractice && (
-            <span style={{ background: `${C.steelDim}30`, color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 10, padding: '3px 10px' }}>UNRATED</span>
+            <span style={{ background: `${C.steelDim}30`, color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 10, padding: '3px 10px' }}>{t('UNRATED')}</span>
           )}
         </div>
         <div className="flex items-center gap-5 flex-wrap">
-          <span style={{ color: C.steelDim, fontSize: 12, fontFamily: "'JetBrains Mono',monospace" }}>{isPractice ? 'PRACTICE' : 'RATED'}</span>
-          <span style={{ color: C.steelDim, fontSize: 12, fontFamily: "'JetBrains Mono',monospace" }}>Move 7</span>
-          <span style={{ color: C.steel, fontSize: 13 }}>vs <span style={{ color: C.deck }}>{isPractice ? 'engine' : 'nikolai_k'}</span></span>
+          <span style={{ color: C.steelDim, fontSize: 12, fontFamily: "'JetBrains Mono',monospace" }}>{isPractice ? t('PRACTICE') : t('RATED')}</span>
+          <span style={{ color: C.steelDim, fontSize: 12, fontFamily: "'JetBrains Mono',monospace" }}>{t('Move {n}', { n: 7 })}</span>
+          <span style={{ color: C.steel, fontSize: 13 }}>{t('vs')} <span style={{ color: C.deck }}>{isPractice ? t('engine') : 'nikolai_k'}</span></span>
           {!isPractice && (
             <div style={{ background: `${C.green}22`, color: C.green, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, padding: '3px 10px' }}>⏱ 5:42</div>
           )}
@@ -1437,14 +1439,14 @@ function PlayPage({ mode = 'rated' }: { mode?: 'rated' | 'practice' }) {
           <div style={{ border: `1px solid ${C.cyan}30`, background: C.graphite2 }} className="p-4">
             <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
               <div className="flex items-center gap-4">
-                <span style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>YOUR CONTAINER</span>
+                <span style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>{t('YOUR CONTAINER')}</span>
                 <span style={{ color: C.steelDim, fontSize: 11, fontFamily: "'JetBrains Mono',monospace" }}>15×10</span>
               </div>
               <div className="flex items-center gap-4 text-xs flex-wrap">
                 {[
-                  { label: 'Placed', fill: `${C.blue}18`, border: C.blue },
-                  { label: 'Row closed', fill: `${C.green}22`, border: C.green },
-                  { label: 'Entry A0', fill: `${C.cyan}18`, border: C.cyan },
+                  { label: t('Placed'), fill: `${C.blue}18`, border: C.blue },
+                  { label: t('Row closed'), fill: `${C.green}22`, border: C.green },
+                  { label: t('Entry A0'), fill: `${C.cyan}18`, border: C.cyan },
                 ].map(l => (
                   <span key={l.label} className="flex items-center gap-1.5" style={{ color: C.steelDim }}>
                     <span style={{ display: 'inline-block', width: 12, height: 12, background: l.fill, border: `1.5px solid ${l.border}` }} />
@@ -1462,9 +1464,9 @@ function PlayPage({ mode = 'rated' }: { mode?: 'rated' | 'practice' }) {
           <div style={{ border: `1px solid ${C.steelDim}25`, background: C.graphite2 }} className="p-4">
             <div className="flex items-center gap-4 mb-3">
               <span style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>
-                OPPONENT — {isPractice ? 'engine' : 'nikolai_k'}
+                {t('OPPONENT — {name}', { name: isPractice ? t('engine') : 'nikolai_k' })}
               </span>
-              <span style={{ color: C.steelDim, fontSize: 11, fontFamily: "'JetBrains Mono',monospace" }}>15×10 · read-only</span>
+              <span style={{ color: C.steelDim, fontSize: 11, fontFamily: "'JetBrains Mono',monospace" }}>15×10 · {t('read-only')}</span>
             </div>
             <div className="overflow-x-auto">
               <ContainerGrid filledCells={OPP_CELLS} closedRows={OPP_CLOSED} cellSize={15} rows={10} />
@@ -1474,7 +1476,7 @@ function PlayPage({ mode = 'rated' }: { mode?: 'rated' | 'practice' }) {
           {/* Remaining cargo */}
           <div style={{ border: `1px solid ${C.blue}35`, background: C.graphite2 }} className="p-4">
             <p style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>
-              YOUR REMAINING CARGO — figures the opponent can still assign you
+              {t('YOUR REMAINING CARGO — figures the opponent can still assign you')}
             </p>
             <div className="flex flex-wrap gap-2">
               {FIGURES.map(fig => (
@@ -1491,7 +1493,7 @@ function PlayPage({ mode = 'rated' }: { mode?: 'rated' | 'practice' }) {
         <div className="flex flex-col gap-4">
           {/* Incoming cargo */}
           <div style={{ border: `1px solid ${C.cyan}40`, background: C.graphite2 }} className="p-5">
-            <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 12 }}>INCOMING CARGO</p>
+            <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 12 }}>{t('INCOMING CARGO')}</p>
             <div style={{ background: C.graphite, border: `1px solid ${C.cyan}22`, padding: 14 }} className="flex items-center justify-center mb-4">
               <FigurePreview cells={curOri} cardSize={90} color={C.cyan} cellPx={16} dots={incomingFig.dots} number={incomingFig.id} />
             </div>
@@ -1504,9 +1506,9 @@ function PlayPage({ mode = 'rated' }: { mode?: 'rated' | 'practice' }) {
                   style={{ border: `1px solid ${rotIdx % orientations.length === i ? C.cyan : C.steelDim + '50'}`, background: rotIdx % orientations.length === i ? `${C.cyan}18` : 'transparent', color: rotIdx % orientations.length === i ? C.cyan : C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, padding: '4px 10px' }}>{i * 90}°</button>
               ))}
             </div>
-            <p style={{ color: C.steelDim, fontSize: 11, marginBottom: 8 }}>Drag onto your container, or type notation:</p>
+            <p style={{ color: C.steelDim, fontSize: 11, marginBottom: 8 }}>{t('Drag onto your container, or type notation:')}</p>
             <div className="flex gap-2">
-              <input value={notation} onChange={e => setNotation(e.target.value)} placeholder="e.g. B9C10"
+              <input value={notation} onChange={e => setNotation(e.target.value)} placeholder={t('e.g. B9C10')}
                 style={{ background: C.graphite, border: `1px solid ${C.blue}`, color: C.deck, fontFamily: "'JetBrains Mono',monospace", fontSize: 13, padding: '8px 10px', flex: 1, outline: 'none' }} />
               <button style={{ background: C.cyan, color: C.graphite, fontWeight: 700, fontSize: 12, padding: '8px 14px' }}>OK</button>
             </div>
@@ -1514,8 +1516,8 @@ function PlayPage({ mode = 'rated' }: { mode?: 'rated' | 'practice' }) {
 
           {/* Request panel */}
           <div style={{ border: `1px solid ${C.blue}40`, background: C.graphite2 }} className="p-5">
-            <p style={{ color: C.blue, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 6 }}>REQUEST — OPPONENT&apos;S REMAINING POOL</p>
-            <p style={{ color: C.steelDim, fontSize: 11, marginBottom: 12 }}>Choose a figure to assign to your opponent. Greyed out = repeat-request restricted.</p>
+            <p style={{ color: C.blue, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 6 }}>{t("REQUEST — OPPONENT'S REMAINING POOL")}</p>
+            <p style={{ color: C.steelDim, fontSize: 11, marginBottom: 12 }}>{t('Choose a figure to assign to your opponent. Greyed out = repeat-request restricted.')}</p>
             <div className="flex flex-wrap gap-2">
               {FIGURES.filter(f => !LOADED_IDS.has(f.id)).map(fig => (
                 <button key={fig.id} title={`${fig.label} ${fig.name}`}
@@ -1529,11 +1531,11 @@ function PlayPage({ mode = 'rated' }: { mode?: 'rated' | 'practice' }) {
 
           {/* Move history */}
           <div style={{ border: `1px solid ${C.steelDim}25`, background: C.graphite2 }} className="p-5 flex-1">
-            <p style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>MOVE HISTORY</p>
+            <p style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>{t('MOVE HISTORY')}</p>
             {SAMPLE_HISTORY.map((m, i) => (
               <div key={i} className="flex items-center gap-3 py-1.5" style={{ borderBottom: `1px solid ${C.cyan}0a` }}>
                 <span style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 10, minWidth: 16 }}>{m.turn}</span>
-                <span style={{ color: m.who === 'You' ? C.cyan : C.steel, fontSize: 11, minWidth: 28 }}>{m.who}</span>
+                <span style={{ color: m.who === 'You' ? C.cyan : C.steel, fontSize: 11, minWidth: 28 }}>{t(m.who)}</span>
                 <code style={{ color: m.who === 'You' ? C.deck : C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 12 }}>{m.notation}</code>
               </div>
             ))}
@@ -1563,6 +1565,7 @@ function SandboxPreview() {
   const [selectedFigId, setSelectedFigId] = useState<number | null>(null)
   const [oriIdx, setOriIdx] = useState(0)
   const [ruleToggles, setRuleToggles] = useState({ support: false, steps: false, overhang: false, returnPath: false })
+  const { t } = useLang()
 
   const toggleRule = (k: keyof typeof ruleToggles) => setRuleToggles(r => ({ ...r, [k]: !r[k] }))
 
@@ -1594,18 +1597,18 @@ function SandboxPreview() {
     <div style={{ background: C.graphite, minHeight: '100vh', paddingTop: '3.5rem' }}>
       <div style={{ background: C.graphite2, borderBottom: `1px solid ${C.steelDim}30` }} className="px-4 md:px-6 py-3 flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-4">
-          <span style={{ color: C.steel, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>SANDBOX</span>
-          <span style={{ background: `${C.steelDim}30`, color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 10, padding: '3px 10px' }}>UNRATED · FREE PLACEMENT · 15×11</span>
+          <span style={{ color: C.steel, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>{t('SANDBOX')}</span>
+          <span style={{ background: `${C.steelDim}30`, color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 10, padding: '3px 10px' }}>{t('UNRATED')} · {t('FREE')} PLACEMENT · 15×11</span>
         </div>
         <button onClick={() => { setCells(buildSandboxDemo()); setSelectedFigId(null) }}
           style={{ color: C.steelDim, border: `1px solid ${C.steelDim}40`, fontSize: 12, padding: '4px 12px' }}
-          className="hover:text-deck transition-colors">Reset demo</button>
+          className="hover:text-deck transition-colors">{t('Reset demo')}</button>
       </div>
 
       <div style={{ background: C.graphite2, borderBottom: `1px solid ${C.steelDim}20` }} className="px-4 md:px-6 py-3 flex items-center gap-3 flex-wrap">
-        <span style={{ color: C.steelDim, fontSize: 11, fontFamily: "'JetBrains Mono',monospace" }}>RULE HIGHLIGHTS:</span>
+        <span style={{ color: C.steelDim, fontSize: 11, fontFamily: "'JetBrains Mono',monospace" }}>{t('RULE HIGHLIGHTS:')}</span>
         {(Object.entries(ruleToggles) as [keyof typeof ruleToggles, boolean][]).map(([k, on]) => {
-          const label = k === 'returnPath' ? 'Return Path' : k.charAt(0).toUpperCase() + k.slice(1)
+          const label = k === 'returnPath' ? t('Return Path') : t(k.charAt(0).toUpperCase() + k.slice(1))
           return (
             <button key={k} onClick={() => toggleRule(k)}
               style={{ border: `1px solid ${on ? RULE_COLORS[k] : C.steelDim + '40'}`, background: on ? `${RULE_COLORS[k]}20` : 'transparent', color: on ? RULE_COLORS[k] : C.steelDim, fontSize: 11, fontFamily: "'JetBrains Mono',monospace", padding: '4px 12px', transition: 'all 0.15s' }}>
@@ -1613,18 +1616,18 @@ function SandboxPreview() {
             </button>
           )
         })}
-        <span style={{ color: C.steelDim, fontSize: 11 }}>Click grid to place selected figure.</span>
+        <span style={{ color: C.steelDim, fontSize: 11 }}>{t('Click grid to place selected figure.')}</span>
       </div>
 
       <div className="max-w-7xl mx-auto px-4 py-5 grid lg:grid-cols-[1fr_260px] gap-5">
         <div style={{ border: `1px solid ${C.cyan}25`, background: C.graphite2 }} className="p-4">
           <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-            <span style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>TRAINING CONTAINER</span>
+            <span style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>{t('TRAINING CONTAINER')}</span>
             <div className="flex items-center gap-4 text-xs flex-wrap">
               {(Object.entries(ruleToggles) as [keyof typeof ruleToggles, boolean][]).filter(([, on]) => on).map(([k]) => (
                 <span key={k} className="flex items-center gap-1.5" style={{ color: RULE_COLORS[k] }}>
                   <span style={{ display: 'inline-block', width: 10, height: 10, background: RULE_COLORS[k], opacity: 0.5 }} />
-                  {k === 'returnPath' ? 'Return Path' : k.charAt(0).toUpperCase() + k.slice(1)}
+                  {k === 'returnPath' ? t('Return Path') : t(k.charAt(0).toUpperCase() + k.slice(1))}
                 </span>
               ))}
             </div>
@@ -1635,13 +1638,13 @@ function SandboxPreview() {
           </div>
           <div style={{ marginTop: 10, border: `1px solid ${C.cyan}20`, padding: '8px 12px', fontSize: 12, color: C.steelDim }}>
             <span style={{ color: C.cyan }}>— — —</span>
-            {' '}This extra row is yours while you&apos;re learning to stack. Once you&apos;ve got it, you&apos;ll play on 15×10 — and this line becomes the ceiling.
+            {' '}{t("This extra row is yours while you're learning to stack. Once you've got it, you'll play on 15×10 — and this line becomes the ceiling.")}
           </div>
         </div>
 
         {/* Figure picker */}
         <div style={{ border: `1px solid ${C.steelDim}25`, background: C.graphite2 }} className="p-4">
-          <p style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 12 }}>FIGURE PICKER</p>
+          <p style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 12 }}>{t('FIGURE PICKER')}</p>
           {selectedFigId && (() => {
             const fig = FIGURES.find(f => f.id === selectedFigId)!
             const oris = getOrientations(fig.cells)
@@ -1674,7 +1677,7 @@ function SandboxPreview() {
           </div>
           <button onClick={() => setCells(new Set())}
             style={{ color: C.steelDim, border: `1px solid ${C.steelDim}30`, fontSize: 11, width: '100%', padding: '6px', marginTop: 12 }}
-            className="hover:text-deck transition-colors">Clear all</button>
+            className="hover:text-deck transition-colors">{t('Clear all')}</button>
         </div>
       </div>
     </div>
@@ -1724,6 +1727,10 @@ function stepClimbInitialFilled(rows: number): Set<string> {
 function SandboxPage({ setPage: _setPage }: { setPage: (p: Page) => void }) {
   const ROWS = 11
   const TOTAL_TUT_STEPS = 10 // content steps 0..9; 10 = completion
+  const { lang, t } = useLang()
+  // Rule-overview texts (Step 3) come from the per-language content table; the four
+  // engine-driven demos are ordered identically (support, steps, overhang, return path).
+  const overviewPanels = RULE_OVERVIEW_PANELS[lang]
 
   const [mode, setMode] = useState<'tutorial' | 'free'>('tutorial')
   const [tutStep, setTutStep] = useState(0)
@@ -1848,7 +1855,7 @@ function SandboxPage({ setPage: _setPage }: { setPage: (p: Page) => void }) {
   const ghostValid = displayGhost?.valid ?? true
 
   function handleCellClick(r: number, c: number) {
-    if (!selectedFig) { setMessage('Pick a figure from the bank first.'); return }
+    if (!selectedFig) { setMessage(t('Pick a figure from the bank first.')); return }
     if (clickPoints.length < pointsNeeded) setClickPoints(p => [...p, { r, c }])
   }
 
@@ -1858,7 +1865,7 @@ function SandboxPage({ setPage: _setPage }: { setPage: (p: Page) => void }) {
   function place(explicitPoints?: { r: number; c: number }[]) {
     if (!selectedFig) return
     const clicked = (explicitPoints ?? clickPoints).slice(0, pointsNeeded)
-    if (clicked.length < pointsNeeded) { setMessage('Click the container to mark the reference point(s) first.'); return }
+    if (clicked.length < pointsNeeded) { setMessage(t('Click the container to mark the reference point(s) first.')); return }
     const cells = pointsNeeded === 2
       ? computePlacementFromDots(selectedFig, clicked)
       : computePlacementFromAnchor(selectedFig, rotIdx, clicked[0])
@@ -1867,11 +1874,11 @@ function SandboxPage({ setPage: _setPage }: { setPage: (p: Page) => void }) {
     if (!result.ok) {
       if (result.needsFairPlay && cellsKey != null) {
         setPendingFairPlay({ key: cellsKey })
-        setMessage(`${result.reason}. In a real match this needs the opponent's fair-play OK -- click Place again to confirm you'd still place it here.`)
+        setMessage(t("{reason}. In a real match this needs the opponent's fair-play OK — click Place again to confirm you'd still place it here.", { reason: t(result.reason ?? '') }))
         return
       }
       setPendingFairPlay(null)
-      setMessage(`Invalid: ${result.reason}`)
+      setMessage(t('Invalid: {reason}', { reason: t(result.reason ?? '') }))
       setClickPoints([])
       setNotation('')
       return
@@ -1913,11 +1920,11 @@ function SandboxPage({ setPage: _setPage }: { setPage: (p: Page) => void }) {
     const parsed = parseNotation(notationInput, ROWS)
     if ('error' in parsed) { setNotationInputError(parsed.error); return }
     if (parsed.figureId !== selectedFig.id) {
-      setNotationInputError(`That notation is for figure ${String(parsed.figureId).padStart(2, '0')}, not ${selectedFig.label}.`)
+      setNotationInputError(t('That notation is for figure {id}, not {label}.', { id: String(parsed.figureId).padStart(2, '0'), label: selectedFig.label }))
       return
     }
     if (parsed.points.length !== pointsNeeded) {
-      setNotationInputError(`${selectedFig.label} needs ${pointsNeeded} reference point${pointsNeeded > 1 ? 's' : ''} -- got ${parsed.points.length}.`)
+      setNotationInputError(t('{label} needs {n} reference point(s) — got {m}.', { label: selectedFig.label, n: pointsNeeded, m: parsed.points.length }))
       return
     }
     setNotationInputError(null)
@@ -1993,32 +2000,12 @@ function SandboxPage({ setPage: _setPage }: { setPage: (p: Page) => void }) {
       return { filled: f, ghost: new Set(attempt.map(([r, c]) => cellKey(r, c))), result: checkPlacement(attempt, f, ROWS) }
     })()
     return [
-      {
-        title: 'SUPPORT', headline: 'Every piece needs something to rest on',
-        body: "Nothing in the container may float — every figure must touch the floor, or an already-placed piece, somewhere. Watch what happens when we try to drop a piece straight into empty air:",
-        note: "Hard rule — unlike overhang below, there's no fair-play exception for it.",
-        demo: support,
-      },
-      {
-        title: 'STEPS', headline: "Cargo can't cross a step taller than 3 cells",
-        body: 'Here the entrance column is stacked 5 cells high. Trying to place a figure past it — straight across that drop — gets rejected, even though the target cell itself is empty and on the floor:',
-        note: 'A step of 2 or 3 cells is passable; taller than that blocks delivery through it until another placement lowers the gap — the same going up as going down.',
-        demo: { filled: step4Demo.cells, ghost: step4Demo.ghost, result: step4Demo.result },
-      },
-      {
-        title: 'OVERHANG & FAIR PLAY', headline: 'Most of a piece can hang over empty space — up to a point',
-        body: 'A figure doesn’t need every cell supported, only enough of it does. Here, one corner of this figure rests on a small ledge; the rest hangs over open air:',
-        note: 'Over 50% unsupported needs the opponent’s explicit fair-play OK — you’ll walk through exactly how that works, both ways, later in this tutorial.',
-        demo: overhang,
-      },
-      {
-        title: 'RETURN PATH', headline: "The very last move can't seal the container shut",
-        body: 'A placement is refused if it would leave nowhere left to deliver cargo, anywhere in the whole container — here every cell but the entrance is already full, so even a single-cell Mono is rejected if it lands here:',
-        note: "This isn't about the figure's size or shape — a Mono is as small as it gets and still can't take this cell. It only guards the literal last reachable cell. Walling off a smaller pocket earlier is legal — those cells simply become permanently dead space.",
-        demo: returnPath,
-      },
+      { ...overviewPanels[0], demo: support },
+      { ...overviewPanels[1], demo: { filled: step4Demo.cells, ghost: step4Demo.ghost, result: step4Demo.result } },
+      { ...overviewPanels[2], demo: overhang },
+      { ...overviewPanels[3], demo: returnPath },
     ]
-  }, [step4Demo])
+  }, [step4Demo, overviewPanels])
 
   // Step 8: same >50%-overhang scenario as the Step 3 overview panel, but interactive --
   // walked through BOTH outcomes (confirm / decline), which the real free-mode double-
@@ -2042,47 +2029,44 @@ function SandboxPage({ setPage: _setPage }: { setPage: (p: Page) => void }) {
     <div style={{ background: C.graphite, minHeight: '100vh', paddingTop: '3.5rem' }}>
       <div style={{ background: C.graphite2, borderBottom: `1px solid ${C.steelDim}30` }} className="px-4 md:px-6 py-3 flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-4">
-          <span style={{ color: C.steel, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>SANDBOX</span>
+          <span style={{ color: C.steel, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>{t('SANDBOX')}</span>
           <span style={{ background: `${C.steelDim}30`, color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 10, padding: '3px 10px' }}>
-            UNRATED · FREE PLACEMENT · 15×{ROWS}
+            {t('UNRATED')} · {t('FREE')} PLACEMENT · 15×{ROWS}
           </span>
           {mode === 'tutorial' && (
             <span style={{ background: `${C.cyan}20`, color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 10, padding: '3px 10px' }}>
-              TUTORIAL · STEP {Math.min(tutStep + 1, TOTAL_TUT_STEPS)} OF {TOTAL_TUT_STEPS}
+              {t('TUTORIAL · STEP {step} OF {total}', { step: Math.min(tutStep + 1, TOTAL_TUT_STEPS), total: TOTAL_TUT_STEPS })}
             </span>
           )}
         </div>
         <div className="flex items-center gap-3">
           {mode === 'free' && (
             <button onClick={restartTutorial} style={{ color: C.steelDim, border: `1px solid ${C.steelDim}40`, fontSize: 12, padding: '4px 12px' }}
-              className="hover:text-deck transition-colors">Restart tutorial</button>
+              className="hover:text-deck transition-colors">{t('Restart tutorial')}</button>
           )}
           {mode === 'tutorial' && tutStep > 0 && tutStep <= TOTAL_TUT_STEPS && (
             <button onClick={goBack} style={{ color: C.steelDim, border: `1px solid ${C.steelDim}40`, fontSize: 12, padding: '4px 12px', cursor: 'pointer' }}
-              className="hover:text-deck transition-colors">← Back</button>
+              className="hover:text-deck transition-colors">{t('← Back')}</button>
           )}
           {mode === 'tutorial' && tutStep < TOTAL_TUT_STEPS && (
             <button onClick={startFreeMode} style={{ color: C.steelDim, border: `1px solid ${C.steelDim}40`, fontSize: 12, padding: '4px 12px' }}
-              className="hover:text-deck transition-colors">Skip to free sandbox</button>
+              className="hover:text-deck transition-colors">{t('Skip to free sandbox')}</button>
           )}
           {(mode === 'free' || (mode === 'tutorial' && tutStep === 1)) && (
             <button onClick={() => (mode === 'free' ? clearContainer() : initStep(1))} style={{ color: C.steelDim, border: `1px solid ${C.steelDim}40`, fontSize: 12, padding: '4px 12px' }}
-              className="hover:text-deck transition-colors">Clear container</button>
+              className="hover:text-deck transition-colors">{t('Clear container')}</button>
           )}
         </div>
       </div>
 
       {mode === 'tutorial' && tutStep === 0 && (
         <div className="max-w-2xl mx-auto px-4 py-16 text-center">
-          <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 12, marginBottom: 12 }}>STEP 1 OF 10 — THE GOAL</p>
-          <h2 style={{ color: C.deck, fontSize: 26, fontWeight: 700, marginBottom: 16 }}>Stow cargo, close rows and columns</h2>
+          <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 12, marginBottom: 12 }}>{t('STEP 1 OF 10 — THE GOAL')}</p>
+          <h2 style={{ color: C.deck, fontSize: 26, fontWeight: 700, marginBottom: 16 }}>{t('Stow cargo, close rows and columns')}</h2>
           <p style={{ color: C.steel, fontSize: 15, lineHeight: 1.6, marginBottom: 28 }}>
-            In a real match your opponent chooses which cargo figure you receive next, and you place
-            it in your container. Fill every cell of a row or a column and it closes — closing 5 rows
-            and/or columns first wins the game. This sandbox skips the opponent: pick any figure,
-            any time, and see how placement really works before you play for real.
+            {t('In a real match your opponent chooses which cargo figure you receive next, and you place it in your container. Fill every cell of a row or a column and it closes — closing 5 rows and/or columns first wins the game. This sandbox skips the opponent: pick any figure, any time, and see how placement really works before you play for real.')}
           </p>
-          <button onClick={() => setTutStep(1)} style={{ background: C.blue, color: C.deck, fontWeight: 600, fontSize: 14, padding: '12px 28px', border: 'none', cursor: 'pointer' }}>Start →</button>
+          <button onClick={() => setTutStep(1)} style={{ background: C.blue, color: C.deck, fontWeight: 600, fontSize: 14, padding: '12px 28px', border: 'none', cursor: 'pointer' }}>{t('Start →')}</button>
         </div>
       )}
 
@@ -2098,19 +2082,18 @@ function SandboxPage({ setPage: _setPage }: { setPage: (p: Page) => void }) {
             {message && <p style={{ color: C.red, fontSize: 13, marginTop: 10 }}>{message}</p>}
           </div>
           <div style={{ border: `1px solid ${C.cyan}40`, background: C.graphite2 }} className="p-5 h-fit">
-            <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>STEP 2 OF 10 — ENTRANCE &amp; FIRST PLACEMENT</p>
+            <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>{t('STEP 2 OF 10 — ENTRANCE & FIRST PLACEMENT')}</p>
             <p style={{ color: C.steel, fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>
-              The cyan cell is <b style={{ color: C.cyan }}>A0</b> — the entrance. Every piece of cargo
-              must be reachable from here. You've been handed figure <b style={{ color: C.deck }}>{selectedFig.label} — {selectedFig.name}</b>,
-              a single cell — the simplest placement there is.
+              {t('The cyan cell is')} <b style={{ color: C.cyan }}>A0</b> {t("— the entrance. Every piece of cargo must be reachable from here. You've been handed figure")} <b style={{ color: C.deck }}>{selectedFig.label} — {selectedFig.name}</b>,{' '}
+              {t('a single cell — the simplest placement there is.')}
             </p>
-            <p style={{ color: C.steelDim, fontSize: 12, marginBottom: 12 }}>Click any cell on the bottom row to place it.</p>
+            <p style={{ color: C.steelDim, fontSize: 12, marginBottom: 12 }}>{t('Click any cell on the bottom row to place it.')}</p>
             <div style={{ background: C.graphite, border: `1px solid ${C.cyan}22`, padding: 14 }} className="flex items-center justify-center mb-4">
               <FigurePreview cells={selectedFig.cells} cardSize={60} color={C.cyan} cellPx={14} dots={selectedFig.dots} number={selectedFig.id} />
             </div>
             <button onClick={() => place()} disabled={clickPoints.length < pointsNeeded}
               style={{ background: clickPoints.length >= pointsNeeded ? C.cyan : C.steelDim, color: C.graphite, fontWeight: 700, fontSize: 13, padding: '10px 20px', border: 'none', width: '100%', cursor: clickPoints.length >= pointsNeeded ? 'pointer' : 'default' }}>
-              Place
+              {t('Place')}
             </button>
           </div>
         </div>
@@ -2118,19 +2101,16 @@ function SandboxPage({ setPage: _setPage }: { setPage: (p: Page) => void }) {
 
       {mode === 'tutorial' && tutStep === 2 && lastPlacement && (
         <div className="max-w-2xl mx-auto px-4 py-16 text-center">
-          <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 12, marginBottom: 12 }}>STEP 3 OF 10 — NOTATION</p>
-          <h2 style={{ color: C.deck, fontSize: 24, fontWeight: 700, marginBottom: 16 }}>You just recorded your first move</h2>
+          <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 12, marginBottom: 12 }}>{t('STEP 3 OF 10 — NOTATION')}</p>
+          <h2 style={{ color: C.deck, fontSize: 24, fontWeight: 700, marginBottom: 16 }}>{t('You just recorded your first move')}</h2>
           <p style={{ color: C.steelDim, fontSize: 12, marginBottom: 8 }}>{lastPlacement.figLabel}</p>
           <div style={{ background: C.graphite2, border: `1px solid ${C.cyan}30`, padding: '18px 24px', marginBottom: 20 }}>
             <code style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 22, fontWeight: 700 }}>{lastPlacement.notation}</code>
           </div>
           <p style={{ color: C.steel, fontSize: 15, lineHeight: 1.6, marginBottom: 28 }}>
-            That's the figure's number followed by the cell(s) its reference dots landed on —
-            the same notation you'll report to your opponent (or the server records) in a real match.
-            Every figure has 1 or 2 reference dots; a wider figure needs two cells to pin down its
-            rotation, a single-cell figure like this one needs just one.
+            {t("That's the figure's number followed by the cell(s) its reference dots landed on — the same notation you'll report to your opponent (or the server records) in a real match. Every figure has 1 or 2 reference dots; a wider figure needs two cells to pin down its rotation, a single-cell figure like this one needs just one.")}
           </p>
-          <button onClick={() => setTutStep(3)} style={{ background: C.blue, color: C.deck, fontWeight: 600, fontSize: 14, padding: '12px 28px', border: 'none', cursor: 'pointer' }}>Next →</button>
+          <button onClick={() => setTutStep(3)} style={{ background: C.blue, color: C.deck, fontWeight: 600, fontSize: 14, padding: '12px 28px', border: 'none', cursor: 'pointer' }}>{t('Next →')}</button>
         </div>
       )}
 
@@ -2139,7 +2119,7 @@ function SandboxPage({ setPage: _setPage }: { setPage: (p: Page) => void }) {
         return (
           <div className="max-w-3xl mx-auto px-4 py-12">
             <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 12, marginBottom: 12, textAlign: 'center' }}>
-              STEP 4 OF 10 — CORE RULES ({rulesPanelIdx + 1}/4 — {panel.title})
+              {t('STEP 4 OF 10 — CORE RULES ({cur}/4 — {title})', { cur: rulesPanelIdx + 1, title: panel.title })}
             </p>
             <h2 style={{ color: C.deck, fontSize: 24, fontWeight: 700, marginBottom: 16, textAlign: 'center' }}>{panel.headline}</h2>
             <p style={{ color: C.steel, fontSize: 15, lineHeight: 1.6, marginBottom: 24, textAlign: 'center' }}>{panel.body}</p>
@@ -2153,12 +2133,12 @@ function SandboxPage({ setPage: _setPage }: { setPage: (p: Page) => void }) {
             <p style={{ color: C.steelDim, fontSize: 13, lineHeight: 1.6, marginBottom: 24, textAlign: 'center' }}>{panel.note}</p>
             <div className="flex justify-center items-center gap-3">
               {rulesPanelIdx > 0 && (
-                <button onClick={() => setRulesPanelIdx(i => i - 1)} style={{ color: C.steelDim, border: `1px solid ${C.steelDim}40`, fontSize: 13, padding: '10px 18px', cursor: 'pointer' }} className="hover:text-deck transition-colors">← Prev rule</button>
+                <button onClick={() => setRulesPanelIdx(i => i - 1)} style={{ color: C.steelDim, border: `1px solid ${C.steelDim}40`, fontSize: 13, padding: '10px 18px', cursor: 'pointer' }} className="hover:text-deck transition-colors">{t('← Prev rule')}</button>
               )}
               {rulesPanelIdx < ruleOverviewDemos.length - 1 ? (
-                <button onClick={() => setRulesPanelIdx(i => i + 1)} style={{ background: C.blue, color: C.deck, fontWeight: 600, fontSize: 14, padding: '12px 28px', border: 'none', cursor: 'pointer' }}>Next rule →</button>
+                <button onClick={() => setRulesPanelIdx(i => i + 1)} style={{ background: C.blue, color: C.deck, fontWeight: 600, fontSize: 14, padding: '12px 28px', border: 'none', cursor: 'pointer' }}>{t('Next rule →')}</button>
               ) : (
-                <button onClick={() => { setRulesPanelIdx(0); setTutStep(4) }} style={{ background: C.blue, color: C.deck, fontWeight: 600, fontSize: 14, padding: '12px 28px', border: 'none', cursor: 'pointer' }}>Next step →</button>
+                <button onClick={() => { setRulesPanelIdx(0); setTutStep(4) }} style={{ background: C.blue, color: C.deck, fontWeight: 600, fontSize: 14, padding: '12px 28px', border: 'none', cursor: 'pointer' }}>{t('Next step →')}</button>
               )}
             </div>
           </div>
@@ -2177,31 +2157,29 @@ function SandboxPage({ setPage: _setPage }: { setPage: (p: Page) => void }) {
             {message && <p style={{ color: C.red, fontSize: 13, marginTop: 10 }}>{message}</p>}
             {deadCellAdvisory != null && (
               deadCellAdvisory > 0
-                ? <p style={{ color: '#ffaa00', fontSize: 13, marginTop: 10 }}>This placement walled off {deadCellAdvisory} cell{deadCellAdvisory > 1 ? 's' : ''} — they can never receive cargo now. Try Reset for a cleaner spot.</p>
-                : <p style={{ color: C.green, fontSize: 13, marginTop: 10 }}>Clean placement — no cells were walled off.</p>
+                ? <p style={{ color: '#ffaa00', fontSize: 13, marginTop: 10 }}>{t('This placement walled off {n} cell(s) — they can never receive cargo now. Try Reset for a cleaner spot.', { n: deadCellAdvisory })}</p>
+                : <p style={{ color: C.green, fontSize: 13, marginTop: 10 }}>{t('Clean placement — no cells were walled off.')}</p>
             )}
           </div>
           <div style={{ border: `1px solid ${C.cyan}40`, background: C.graphite2 }} className="p-5 h-fit">
-            <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>STEP 5 OF 10 — MEET F15: PLACE BY POINTS</p>
+            <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>{t('STEP 5 OF 10 — MEET F15: PLACE BY POINTS')}</p>
             <p style={{ color: C.steel, fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>
-              <b style={{ color: C.deck }}>{selectedFig.label} — {selectedFig.name}</b> needs <b style={{ color: C.cyan }}>two</b> reference
-              points, not one — a single point can't pin down both where and which way an asymmetric shape sits.
-              The first click and the second aren't interchangeable: swap their order and you get a different orientation.
+              <b style={{ color: C.deck }}>{selectedFig.label} — {selectedFig.name}</b> {t('needs')} <b style={{ color: C.cyan }}>two</b> {t("reference points, not one — a single point can't pin down both where and which way an asymmetric shape sits. The first click and the second aren't interchangeable: swap their order and you get a different orientation.")}
             </p>
             <div style={{ background: C.graphite, border: `1px solid ${C.cyan}22`, padding: 14 }} className="flex items-center justify-center mb-4">
               <FigurePreview cells={selectedFig.cells} cardSize={70} color={C.cyan} cellPx={14} dots={selectedFig.dots} number={selectedFig.id} />
             </div>
             <p style={{ color: C.steelDim, fontSize: 12, marginBottom: 8 }}>
-              Click two cells in the container, in order. Try to place it without walling off any cell — you'll find out right after whether you did.
+              {t('Click two cells in the container, in order. Try to place it without walling off any cell — you\'ll find out right after whether you did.')}
             </p>
             {notation && <code style={{ color: C.deck, fontFamily: "'JetBrains Mono',monospace", fontSize: 13, display: 'block', marginBottom: 12 }}>{notation}</code>}
             <div className="flex gap-2 mb-3">
               <button onClick={() => place()} disabled={clickPoints.length < pointsNeeded}
-                style={{ background: clickPoints.length >= pointsNeeded ? C.cyan : C.steelDim, color: C.graphite, fontWeight: 700, fontSize: 13, padding: '10px 16px', border: 'none', flex: 1, cursor: clickPoints.length >= pointsNeeded ? 'pointer' : 'default' }}>Place</button>
-              <button onClick={() => initStep(4)} style={{ color: C.steelDim, border: `1px solid ${C.steelDim}40`, fontSize: 13, padding: '10px 14px', cursor: 'pointer' }} className="hover:text-deck transition-colors">Reset</button>
+                style={{ background: clickPoints.length >= pointsNeeded ? C.cyan : C.steelDim, color: C.graphite, fontWeight: 700, fontSize: 13, padding: '10px 16px', border: 'none', flex: 1, cursor: clickPoints.length >= pointsNeeded ? 'pointer' : 'default' }}>{t('Place')}</button>
+              <button onClick={() => initStep(4)} style={{ color: C.steelDim, border: `1px solid ${C.steelDim}40`, fontSize: 13, padding: '10px 14px', cursor: 'pointer' }} className="hover:text-deck transition-colors">{t('Reset')}</button>
             </div>
             {deadCellAdvisory != null && (
-              <button onClick={() => setTutStep(5)} style={{ background: C.blue, color: C.deck, fontWeight: 600, fontSize: 13, padding: '10px 18px', border: 'none', width: '100%', cursor: 'pointer' }}>Next →</button>
+              <button onClick={() => setTutStep(5)} style={{ background: C.blue, color: C.deck, fontWeight: 600, fontSize: 13, padding: '10px 18px', border: 'none', width: '100%', cursor: 'pointer' }}>{t('Next →')}</button>
             )}
           </div>
         </div>
@@ -2216,15 +2194,14 @@ function SandboxPage({ setPage: _setPage }: { setPage: (p: Page) => void }) {
             </div>
             {deadCellAdvisory != null && (
               deadCellAdvisory > 0
-                ? <p style={{ color: '#ffaa00', fontSize: 13, marginTop: 10 }}>This placement walled off {deadCellAdvisory} cell{deadCellAdvisory > 1 ? 's' : ''} — they can never receive cargo now. Try Reset for a cleaner spot.</p>
-                : <p style={{ color: C.green, fontSize: 13, marginTop: 10 }}>Clean placement — no cells were walled off.</p>
+                ? <p style={{ color: '#ffaa00', fontSize: 13, marginTop: 10 }}>{t('This placement walled off {n} cell(s) — they can never receive cargo now. Try Reset for a cleaner spot.', { n: deadCellAdvisory })}</p>
+                : <p style={{ color: C.green, fontSize: 13, marginTop: 10 }}>{t('Clean placement — no cells were walled off.')}</p>
             )}
           </div>
           <div style={{ border: `1px solid ${C.cyan}40`, background: C.graphite2 }} className="p-5 h-fit">
-            <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>STEP 6 OF 10 — PLACE BY NOTATION</p>
+            <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>{t('STEP 6 OF 10 — PLACE BY NOTATION')}</p>
             <p style={{ color: C.steel, fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>
-              Same figure, same two reference dots — this time write where they land instead of clicking them.
-              Format: figure id, then each point as a row letter and column number, e.g. <code style={{ color: C.cyan }}>15D4B3</code>.
+              {t('Same figure, same two reference dots — this time write where they land instead of clicking them. Format: figure id, then each point as a row letter and column number, e.g. {ex}.', { ex: '15D4B3' })}
             </p>
             <div style={{ background: C.graphite, border: `1px solid ${C.cyan}22`, padding: 14 }} className="flex items-center justify-center mb-4">
               <FigurePreview cells={selectedFig.cells} cardSize={70} color={C.cyan} cellPx={14} dots={selectedFig.dots} number={selectedFig.id} />
@@ -2235,8 +2212,8 @@ function SandboxPage({ setPage: _setPage }: { setPage: (p: Page) => void }) {
             {notationInputError && <p style={{ color: C.red, fontSize: 12, marginBottom: 8 }}>{notationInputError}</p>}
             <div className="flex gap-2 mb-3">
               <button onClick={placeByNotation} disabled={!notationInput}
-                style={{ background: notationInput ? C.cyan : C.steelDim, color: C.graphite, fontWeight: 700, fontSize: 13, padding: '10px 16px', border: 'none', flex: 1, cursor: notationInput ? 'pointer' : 'default' }}>Place</button>
-              <button onClick={() => initStep(5)} style={{ color: C.steelDim, border: `1px solid ${C.steelDim}40`, fontSize: 13, padding: '10px 14px', cursor: 'pointer' }} className="hover:text-deck transition-colors">Reset</button>
+                style={{ background: notationInput ? C.cyan : C.steelDim, color: C.graphite, fontWeight: 700, fontSize: 13, padding: '10px 16px', border: 'none', flex: 1, cursor: notationInput ? 'pointer' : 'default' }}>{t('Place')}</button>
+              <button onClick={() => initStep(5)} style={{ color: C.steelDim, border: `1px solid ${C.steelDim}40`, fontSize: 13, padding: '10px 14px', cursor: 'pointer' }} className="hover:text-deck transition-colors">{t('Reset')}</button>
             </div>
             {deadCellAdvisory != null && (
               <button onClick={() => setTutStep(6)} style={{ background: C.blue, color: C.deck, fontWeight: 600, fontSize: 13, padding: '10px 18px', border: 'none', width: '100%', cursor: 'pointer' }}>Next →</button>
@@ -2257,18 +2234,19 @@ function SandboxPage({ setPage: _setPage }: { setPage: (p: Page) => void }) {
             {message && <p style={{ color: C.red, fontSize: 13, marginTop: 10 }}>{message}</p>}
             {deadCellAdvisory != null && (
               deadCellAdvisory > 0
-                ? <p style={{ color: '#ffaa00', fontSize: 13, marginTop: 10 }}>That one walled off {deadCellAdvisory} cell{deadCellAdvisory > 1 ? 's' : ''}.</p>
-                : <p style={{ color: C.green, fontSize: 13, marginTop: 10 }}>Clean — no cells walled off.</p>
+                ? <p style={{ color: '#ffaa00', fontSize: 13, marginTop: 10 }}>{t('That one walled off {n} cell(s).', { n: deadCellAdvisory })}</p>
+                : <p style={{ color: C.green, fontSize: 13, marginTop: 10 }}>{t('Clean — no cells walled off.')}</p>
             )}
           </div>
           <div style={{ border: `1px solid ${C.cyan}40`, background: C.graphite2 }} className="p-5 h-fit">
             <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>
-              STEP 7 OF 10 — {shipmentIdx < SHIPMENT_CORE_COUNT ? `SHIPMENT ${shipmentIdx + 1} OF ${SHIPMENT_CORE_COUNT}` : shipmentIdx < SHIPMENT_FIGS.length ? `BONUS ${shipmentIdx - SHIPMENT_CORE_COUNT + 1} OF ${SHIPMENT_FIGS.length - SHIPMENT_CORE_COUNT}` : 'ALL SHIPMENTS DONE'}
+              {t('STEP 7 OF 10 — {phase}', { phase:
+                shipmentIdx < SHIPMENT_CORE_COUNT ? t('SHIPMENT {n} OF {m}', { n: shipmentIdx + 1, m: SHIPMENT_CORE_COUNT })
+                : shipmentIdx < SHIPMENT_FIGS.length ? t('BONUS {n} OF {m}', { n: shipmentIdx - SHIPMENT_CORE_COUNT + 1, m: SHIPMENT_FIGS.length - SHIPMENT_CORE_COUNT })
+                : t('ALL SHIPMENTS DONE') })}
             </p>
             <p style={{ color: C.steel, fontSize: 13, lineHeight: 1.6, marginBottom: 12 }}>
-              Five figures, fed one at a time — just like a real opponent handing you cargo. Place each one, by
-              clicking or by notation, and try to finish all five with <b style={{ color: C.deck }}>zero</b> dead cells.
-              Two harder bonus figures follow if you want more practice.
+              {t('Five figures, fed one at a time — just like a real opponent handing you cargo. Place each one, by clicking or by notation, and try to finish all five with {zero} dead cells. Two harder bonus figures follow if you want more practice.', { zero: t('zero') })}
             </p>
             {selectedFig && shipmentIdx < SHIPMENT_FIGS.length && (
               <div style={{ background: C.graphite, border: `1px solid ${C.cyan}22`, padding: 14 }} className="flex items-center justify-center mb-4">
@@ -2280,24 +2258,24 @@ function SandboxPage({ setPage: _setPage }: { setPage: (p: Page) => void }) {
                 {notation && <code style={{ color: C.deck, fontFamily: "'JetBrains Mono',monospace", fontSize: 13, display: 'block', marginBottom: 10 }}>{notation}</code>}
                 <div className="flex gap-2 mb-3">
                   <button onClick={() => place()} disabled={clickPoints.length < pointsNeeded}
-                    style={{ background: clickPoints.length >= pointsNeeded ? C.cyan : C.steelDim, color: C.graphite, fontWeight: 700, fontSize: 12, padding: '8px 14px', border: 'none', flex: 1, cursor: clickPoints.length >= pointsNeeded ? 'pointer' : 'default' }}>Place (click points)</button>
+                    style={{ background: clickPoints.length >= pointsNeeded ? C.cyan : C.steelDim, color: C.graphite, fontWeight: 700, fontSize: 12, padding: '8px 14px', border: 'none', flex: 1, cursor: clickPoints.length >= pointsNeeded ? 'pointer' : 'default' }}>{t('Place (click points)')}</button>
                 </div>
                 <input value={notationInput} onChange={e => setNotationInput(e.target.value)}
-                  placeholder="or type notation, e.g. 08C0B0A0A1"
+                  placeholder={t('or type notation, e.g. {ex}', { ex: '08C0B0A0A1' })}
                   style={{ width: '100%', background: C.graphite, border: `1px solid ${C.cyan}40`, color: C.deck, fontFamily: "'JetBrains Mono',monospace", fontSize: 13, padding: '8px 10px', marginBottom: 8 }} />
                 {notationInputError && <p style={{ color: C.red, fontSize: 12, marginBottom: 8 }}>{notationInputError}</p>}
                 <button onClick={placeByNotation} disabled={!notationInput}
-                  style={{ background: notationInput ? C.cyan : C.steelDim, color: C.graphite, fontWeight: 700, fontSize: 12, padding: '8px 14px', border: 'none', width: '100%', cursor: notationInput ? 'pointer' : 'default', marginBottom: 12 }}>Place (from notation)</button>
+                  style={{ background: notationInput ? C.cyan : C.steelDim, color: C.graphite, fontWeight: 700, fontSize: 12, padding: '8px 14px', border: 'none', width: '100%', cursor: notationInput ? 'pointer' : 'default', marginBottom: 12 }}>{t('Place (from notation)')}</button>
               </>
             )}
-            <p style={{ color: C.steelDim, fontSize: 12, marginBottom: 12 }}>Dead cells so far: <b style={{ color: shipmentDeadTotal > 0 ? '#ffaa00' : C.green }}>{shipmentDeadTotal}</b></p>
+            <p style={{ color: C.steelDim, fontSize: 12, marginBottom: 12 }}>{t('Dead cells so far: {n}', { n: shipmentDeadTotal })}</p>
             <div className="flex gap-2">
               <button onClick={resetLastShipment} disabled={shipmentHistory.length === 0}
                 style={{ color: shipmentHistory.length ? C.steelDim : `${C.steelDim}50`, border: `1px solid ${C.steelDim}40`, fontSize: 12, padding: '8px 10px', flex: 1, cursor: shipmentHistory.length ? 'pointer' : 'default' }}
-                className={shipmentHistory.length ? 'hover:text-deck transition-colors' : ''}>Reset last</button>
-              <button onClick={() => initStep(6)} style={{ color: C.steelDim, border: `1px solid ${C.steelDim}40`, fontSize: 12, padding: '8px 10px', flex: 1, cursor: 'pointer' }} className="hover:text-deck transition-colors">Reset all</button>
+                className={shipmentHistory.length ? 'hover:text-deck transition-colors' : ''}>{t('Reset last')}</button>
+              <button onClick={() => initStep(6)} style={{ color: C.steelDim, border: `1px solid ${C.steelDim}40`, fontSize: 12, padding: '8px 10px', flex: 1, cursor: 'pointer' }} className="hover:text-deck transition-colors">{t('Reset all')}</button>
               {shipmentIdx >= SHIPMENT_CORE_COUNT && (
-                <button onClick={() => setTutStep(7)} style={{ background: C.blue, color: C.deck, fontWeight: 600, fontSize: 12, padding: '8px 14px', border: 'none', flex: 1, cursor: 'pointer' }}>Next →</button>
+                <button onClick={() => setTutStep(7)} style={{ background: C.blue, color: C.deck, fontWeight: 600, fontSize: 12, padding: '8px 14px', border: 'none', flex: 1, cursor: 'pointer' }}>{t('Next →')}</button>
               )}
             </div>
           </div>
@@ -2316,18 +2294,16 @@ function SandboxPage({ setPage: _setPage }: { setPage: (p: Page) => void }) {
             {message && <p style={{ color: C.red, fontSize: 13, marginTop: 10 }}>{message}</p>}
             {deadCellAdvisory != null && stepClimbBridged && (
               deadCellAdvisory > 0
-                ? <p style={{ color: '#ffaa00', fontSize: 13, marginTop: 10 }}>That placement walled off {deadCellAdvisory} cell{deadCellAdvisory > 1 ? 's' : ''}. Reset and try another spot for a clean one.</p>
-                : <p style={{ color: C.green, fontSize: 13, marginTop: 10 }}>Clean — 0 new dead cells.</p>
+                ? <p style={{ color: '#ffaa00', fontSize: 13, marginTop: 10 }}>{t('That placement walled off {n} cell(s). Reset and try another spot for a clean one.', { n: deadCellAdvisory })}</p>
+                : <p style={{ color: C.green, fontSize: 13, marginTop: 10 }}>{t('Clean — 0 new dead cells.')}</p>
             )}
           </div>
           <div style={{ border: `1px solid ${C.cyan}40`, background: C.graphite2 }} className="p-5 h-fit">
-            <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>STEP 8 OF 10 — CLIMBING (AND CAREFULLY DESCENDING) A TALL STEP</p>
+            <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>{t('STEP 8 OF 10 — CLIMBING (AND CAREFULLY DESCENDING) A TALL STEP')}</p>
             {!stepClimbBridged ? (
               <>
                 <p style={{ color: C.steel, fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>
-                  F4 is standing on end in the middle of the container — a wall 4 cells tall, too tall to cross
-                  from either side. You can fix the situation by placing a figure to the left of the tall step.
-                  You have a repair toolkit — choose the right figure and place it so you can pass further.
+                  {t('F4 is standing on end in the middle of the container — a wall 4 cells tall, too tall to cross from either side. You can fix the situation by placing a figure to the left of the tall step. You have a repair toolkit — choose the right figure and place it so you can pass further.')}
                 </p>
                 <div className="flex gap-2 mb-3">
                   {[1, 2, 3].map(id => {
@@ -2344,12 +2320,10 @@ function SandboxPage({ setPage: _setPage }: { setPage: (p: Page) => void }) {
             ) : (
               <>
                 <p style={{ color: C.steel, fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>
-                  The gap is bridged — the space right above the wall is reachable now. Place cargo carefully
-                  to the right of the tall step, hanging over open air, to gently set down fragile cargo.
-                  Choose the right cargo and reduce the height of the problem: <b style={{ color: C.deck }}>F01
-                  (Mono)</b> rests safely right on top of the wall, no risk. <b style={{ color: C.deck }}>F05</b>{' '}
-                  reaches further but hangs mostly over open air — that needs your fair-play OK, same as the
-                  overhang rule from Step 4.
+                  {t('The gap is bridged — the space right above the wall is reachable now. Place cargo carefully to the right of the tall step, hanging over open air, to gently set down fragile cargo. Choose the right cargo and reduce the height of the problem:')}
+                  {' '}<b style={{ color: C.deck }}>F01 (Mono)</b> {t('rests safely right on top of the wall, no risk.')}{' '}
+                  <b style={{ color: C.deck }}>F05</b>{' '}
+                  {t('reaches further but hangs mostly over open air — that needs your fair-play OK, same as the overhang rule from Step 4.')}
                 </p>
                 <div className="flex gap-2 mb-3">
                   {[5, 1].map(id => {
@@ -2368,13 +2342,13 @@ function SandboxPage({ setPage: _setPage }: { setPage: (p: Page) => void }) {
               <>
                 {notation && <code style={{ color: C.deck, fontFamily: "'JetBrains Mono',monospace", fontSize: 13, display: 'block', marginBottom: 10 }}>{notation}</code>}
                 <button onClick={() => place()} disabled={clickPoints.length < pointsNeeded}
-                  style={{ background: clickPoints.length >= pointsNeeded ? C.cyan : C.steelDim, color: C.graphite, fontWeight: 700, fontSize: 12, padding: '10px 14px', border: 'none', width: '100%', cursor: clickPoints.length >= pointsNeeded ? 'pointer' : 'default', marginBottom: 10 }}>Place</button>
+                  style={{ background: clickPoints.length >= pointsNeeded ? C.cyan : C.steelDim, color: C.graphite, fontWeight: 700, fontSize: 12, padding: '10px 14px', border: 'none', width: '100%', cursor: clickPoints.length >= pointsNeeded ? 'pointer' : 'default', marginBottom: 10 }}>{t('Place')}</button>
               </>
             )}
             <div className="flex gap-2">
-              <button onClick={() => initStep(7)} style={{ color: C.steelDim, border: `1px solid ${C.steelDim}40`, fontSize: 12, padding: '8px 12px', flex: 1, cursor: 'pointer' }} className="hover:text-deck transition-colors">Reset</button>
+              <button onClick={() => initStep(7)} style={{ color: C.steelDim, border: `1px solid ${C.steelDim}40`, fontSize: 12, padding: '8px 12px', flex: 1, cursor: 'pointer' }} className="hover:text-deck transition-colors">{t('Reset')}</button>
               {stepClimbDone && (
-                <button onClick={() => setTutStep(8)} style={{ background: C.blue, color: C.deck, fontWeight: 600, fontSize: 12, padding: '8px 14px', border: 'none', flex: 1, cursor: 'pointer' }}>Next →</button>
+                <button onClick={() => setTutStep(8)} style={{ background: C.blue, color: C.deck, fontWeight: 600, fontSize: 12, padding: '8px 14px', border: 'none', flex: 1, cursor: 'pointer' }}>{t('Next →')}</button>
               )}
             </div>
           </div>
@@ -2383,11 +2357,10 @@ function SandboxPage({ setPage: _setPage }: { setPage: (p: Page) => void }) {
 
       {mode === 'tutorial' && tutStep === 8 && (
         <div className="max-w-3xl mx-auto px-4 py-12">
-          <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 12, marginBottom: 12, textAlign: 'center' }}>STEP 9 OF 10 — FAIR PLAY, BOTH WAYS</p>
-          <h2 style={{ color: C.deck, fontSize: 24, fontWeight: 700, marginBottom: 16, textAlign: 'center' }}>Your opponent can say yes — or no</h2>
+          <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 12, marginBottom: 12, textAlign: 'center' }}>{t('STEP 9 OF 10 — FAIR PLAY, BOTH WAYS')}</p>
+          <h2 style={{ color: C.deck, fontSize: 24, fontWeight: 700, marginBottom: 16, textAlign: 'center' }}>{t('Your opponent can say yes — or no')}</h2>
           <p style={{ color: C.steel, fontSize: 15, lineHeight: 1.6, marginBottom: 24, textAlign: 'center' }}>
-            The same overhang scenario from the rules overview — but this time you see both of your opponent's
-            possible answers, not just the happy path.
+            {t("The same overhang scenario from the rules overview — but this time you see both of your opponent's possible answers, not just the happy path.")}
           </p>
           <div className="flex justify-center mb-4">
             <ContainerGrid filledCells={fairPlayDemoPhase === 'confirmed' ? new Set([...fairPlayDemo.filled, ...fairPlayDemo.ghost]) : fairPlayDemo.filled}
@@ -2401,53 +2374,52 @@ function SandboxPage({ setPage: _setPage }: { setPage: (p: Page) => void }) {
                 <code style={{ color: C.red, fontFamily: "'JetBrains Mono',monospace", fontSize: 13 }}>{fairPlayCheck.reason}</code>
               </div>
               <div className="flex justify-center gap-3">
-                <button onClick={() => setFairPlayDemoPhase('confirmed')} style={{ background: C.green, color: C.graphite, fontWeight: 700, fontSize: 13, padding: '10px 20px', border: 'none', cursor: 'pointer' }}>✓ Opponent confirms</button>
-                <button onClick={() => setFairPlayDemoPhase('declined')} style={{ background: C.red, color: C.deck, fontWeight: 700, fontSize: 13, padding: '10px 20px', border: 'none', cursor: 'pointer' }}>✗ Opponent declines</button>
+                <button onClick={() => setFairPlayDemoPhase('confirmed')} style={{ background: C.green, color: C.graphite, fontWeight: 700, fontSize: 13, padding: '10px 20px', border: 'none', cursor: 'pointer' }}>{t('✓ Opponent confirms')}</button>
+                <button onClick={() => setFairPlayDemoPhase('declined')} style={{ background: C.red, color: C.deck, fontWeight: 700, fontSize: 13, padding: '10px 20px', border: 'none', cursor: 'pointer' }}>{t('✗ Opponent declines')}</button>
               </div>
             </>
           )}
           {fairPlayDemoPhase === 'confirmed' && (
             <>
               <div style={{ background: `${C.green}12`, border: `1px solid ${C.green}40`, padding: '14px 18px', marginBottom: 20, textAlign: 'center' }}>
-                <code style={{ color: C.green, fontFamily: "'JetBrains Mono',monospace", fontSize: 13 }}>Placed — both players confirmed it.</code>
+                <code style={{ color: C.green, fontFamily: "'JetBrains Mono',monospace", fontSize: 13 }}>{t('Placed — both players confirmed it.')}</code>
               </div>
               <p style={{ color: C.steel, fontSize: 14, textAlign: 'center', marginBottom: 20 }}>
-                In a real match, your opponent explicitly agrees to this exact placement before it's allowed —
-                never automatic, never one-sided.
+                {t("In a real match, your opponent explicitly agrees to this exact placement before it's allowed — never automatic, never one-sided.")}
               </p>
-              <div className="flex justify-center"><button onClick={() => setFairPlayDemoPhase('pending')} style={{ color: C.steelDim, border: `1px solid ${C.steelDim}40`, fontSize: 12, padding: '8px 14px', cursor: 'pointer' }} className="hover:text-deck transition-colors">See the decline instead →</button></div>
+              <div className="flex justify-center"><button onClick={() => setFairPlayDemoPhase('pending')} style={{ color: C.steelDim, border: `1px solid ${C.steelDim}40`, fontSize: 12, padding: '8px 14px', cursor: 'pointer' }} className="hover:text-deck transition-colors">{t('See the decline instead →')}</button></div>
             </>
           )}
           {fairPlayDemoPhase === 'declined' && (
             <>
               <div style={{ background: `${C.steelDim}12`, border: `1px solid ${C.steelDim}40`, padding: '14px 18px', marginBottom: 20, textAlign: 'center' }}>
-                <code style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 13 }}>Declined — nothing was placed.</code>
+                <code style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 13 }}>{t('Declined — nothing was placed.')}</code>
               </div>
               <p style={{ color: C.steel, fontSize: 14, textAlign: 'center', marginBottom: 20 }}>
-                Your opponent can also say no. Nothing is placed — you keep the figure and try somewhere else.
+                {t('Your opponent can also say no. Nothing is placed — you keep the figure and try somewhere else.')}
               </p>
-              <div className="flex justify-center"><button onClick={() => setFairPlayDemoPhase('pending')} style={{ color: C.steelDim, border: `1px solid ${C.steelDim}40`, fontSize: 12, padding: '8px 14px', cursor: 'pointer' }} className="hover:text-deck transition-colors">See the confirm instead →</button></div>
+              <div className="flex justify-center"><button onClick={() => setFairPlayDemoPhase('pending')} style={{ color: C.steelDim, border: `1px solid ${C.steelDim}40`, fontSize: 12, padding: '8px 14px', cursor: 'pointer' }} className="hover:text-deck transition-colors">{t('See the confirm instead →')}</button></div>
             </>
           )}
           <div className="flex justify-center mt-6">
-            <button onClick={() => setTutStep(9)} style={{ background: C.blue, color: C.deck, fontWeight: 600, fontSize: 14, padding: '12px 28px', border: 'none', cursor: 'pointer' }}>Next →</button>
+            <button onClick={() => setTutStep(9)} style={{ background: C.blue, color: C.deck, fontWeight: 600, fontSize: 14, padding: '12px 28px', border: 'none', cursor: 'pointer' }}>{t('Next →')}</button>
           </div>
         </div>
       )}
 
       {mode === 'tutorial' && tutStep === 9 && (
         <div className="max-w-2xl mx-auto px-4 py-16">
-          <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 12, marginBottom: 12, textAlign: 'center' }}>STEP 10 OF 10 — HOW TO ACTUALLY WIN</p>
-          <h2 style={{ color: C.deck, fontSize: 24, fontWeight: 700, marginBottom: 20, textAlign: 'center' }}>A few things worth watching for</h2>
+          <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 12, marginBottom: 12, textAlign: 'center' }}>{t('STEP 10 OF 10 — HOW TO ACTUALLY WIN')}</p>
+          <h2 style={{ color: C.deck, fontSize: 24, fontWeight: 700, marginBottom: 20, textAlign: 'center' }}>{t('A few things worth watching for')}</h2>
           <div style={{ color: C.steel, fontSize: 15, lineHeight: 1.9 }}>
-            <p>— Keep rows in play as long as possible — avoid creating dead cells.</p>
-            <p>— Hand your opponent the more awkward figure when you get to choose.</p>
-            <p>— Avoid building tall steps that cost you extra moves to fix later.</p>
-            <p>— Keep an eye on passability across the whole container.</p>
-            <p>— Don't leave narrow bottlenecks.</p>
+            <p>{t('— Keep rows in play as long as possible — avoid creating dead cells.')}</p>
+            <p>{t('— Hand your opponent the more awkward figure when you get to choose.')}</p>
+            <p>{t('— Avoid building tall steps that cost you extra moves to fix later.')}</p>
+            <p>{t('— Keep an eye on passability across the whole container.')}</p>
+            <p>{t("— Don't leave narrow bottlenecks.")}</p>
           </div>
           <div className="flex justify-center mt-8">
-            <button onClick={() => setTutStep(10)} style={{ background: C.blue, color: C.deck, fontWeight: 600, fontSize: 14, padding: '12px 28px', border: 'none', cursor: 'pointer' }}>Finish tutorial →</button>
+            <button onClick={() => setTutStep(10)} style={{ background: C.blue, color: C.deck, fontWeight: 600, fontSize: 14, padding: '12px 28px', border: 'none', cursor: 'pointer' }}>{t('Finish tutorial →')}</button>
           </div>
         </div>
       )}
@@ -2455,25 +2427,23 @@ function SandboxPage({ setPage: _setPage }: { setPage: (p: Page) => void }) {
       {mode === 'tutorial' && tutStep === 10 && (
         <div className="max-w-2xl mx-auto px-4 py-16 text-center">
           <div style={{ width: 64, height: 64, borderRadius: '50%', background: `${C.cyan}20`, border: `2px solid ${C.cyan}`, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', fontSize: 28 }}>🏅</div>
-          <h2 style={{ color: C.deck, fontSize: 24, fontWeight: 700, marginBottom: 16 }}>Your adventure at PuzzleStow has begun</h2>
+          <h2 style={{ color: C.deck, fontSize: 24, fontWeight: 700, marginBottom: 16 }}>{t('Your adventure at PuzzleStow has begun')}</h2>
           <p style={{ color: C.steel, fontSize: 15, lineHeight: 1.7, marginBottom: 20 }}>
-            A long but exciting and interesting road ahead. But the nearest goal is already in sight.
-            Don't stop and go forward. Win ten times first, successfully pass the exam, and advance to
-            the Lodar 15X10 level. Good luck in your promotion on the Lodar staircase!
+            {t("A long but exciting and interesting road ahead. But the nearest goal is already in sight. Don't stop and go forward. Win ten times first, successfully pass the exam, and advance to the Lodar 15X10 level. Good luck in your promotion on the Lodar staircase!")}
           </p>
           <p style={{ color: C.steelDim, fontSize: 12, marginBottom: 28 }}>
-            (The "Новичок" badge itself isn't wired to your profile yet — this screen is a stand-in until that's built.)
+            {t("(The “Новичок” badge itself isn't wired to your profile yet — this screen is a stand-in until that's built.)")}
           </p>
-          <button onClick={startFreeMode} style={{ background: C.cyan, color: C.graphite, fontWeight: 700, fontSize: 14, padding: '12px 28px', border: 'none', cursor: 'pointer' }}>Continue to free sandbox →</button>
+          <button onClick={startFreeMode} style={{ background: C.cyan, color: C.graphite, fontWeight: 700, fontSize: 14, padding: '12px 28px', border: 'none', cursor: 'pointer' }}>{t('Continue to free sandbox →')}</button>
         </div>
       )}
 
       {mode === 'free' && (
         <>
           <div style={{ background: C.graphite2, borderBottom: `1px solid ${C.steelDim}20` }} className="px-4 md:px-6 py-3 flex items-center gap-3 flex-wrap">
-            <span style={{ color: C.steelDim, fontSize: 11, fontFamily: "'JetBrains Mono',monospace" }}>RULE HIGHLIGHTS:</span>
+            <span style={{ color: C.steelDim, fontSize: 11, fontFamily: "'JetBrains Mono',monospace" }}>{t('RULE HIGHLIGHTS:')}</span>
             {(Object.entries(ruleToggles) as [keyof typeof ruleToggles, boolean][]).map(([k, on]) => {
-              const label = k === 'returnPath' ? 'Return Path' : k.charAt(0).toUpperCase() + k.slice(1)
+              const label = k === 'returnPath' ? t('Return Path') : t(k.charAt(0).toUpperCase() + k.slice(1))
               return (
                 <button key={k} onClick={() => toggleRule(k)}
                   style={{ border: `1px solid ${on ? RULE_COLORS[k] : C.steelDim + '40'}`, background: on ? `${RULE_COLORS[k]}20` : 'transparent', color: on ? RULE_COLORS[k] : C.steelDim, fontSize: 11, fontFamily: "'JetBrains Mono',monospace", padding: '4px 12px', transition: 'all 0.15s' }}>
@@ -2498,7 +2468,7 @@ function SandboxPage({ setPage: _setPage }: { setPage: (p: Page) => void }) {
             <div className="flex flex-col gap-4">
               {selectedFig ? (
                 <div style={{ border: `1px solid ${C.cyan}40`, background: C.graphite2 }} className="p-5">
-                  <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 12 }}>SELECTED — {selectedFig.label}</p>
+                  <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 12 }}>{t('SELECTED — {label}', { label: selectedFig.label })}</p>
                   <div style={{ background: C.graphite, border: `1px solid ${C.cyan}22`, padding: 14 }} className="flex items-center justify-center mb-4">
                     <FigurePreview cells={orientations[rotIdx % orientations.length]} cardSize={80} color={C.cyan} cellPx={14} dots={selectedFig.dots} number={selectedFig.id} />
                   </div>
@@ -2511,21 +2481,21 @@ function SandboxPage({ setPage: _setPage }: { setPage: (p: Page) => void }) {
                     </div>
                   )}
                   <p style={{ color: C.steelDim, fontSize: 11, marginBottom: 8 }}>
-                    Click {pointsNeeded === 2 ? 'two cells (its reference dots, in order)' : 'a cell'} on the container.
+                    {t('Click {what} on the container.', { what: pointsNeeded === 2 ? t('two cells (its reference dots, in order)') : t('a cell') })}
                   </p>
                   {notation && <code style={{ color: C.deck, fontFamily: "'JetBrains Mono',monospace", fontSize: 13, display: 'block', marginBottom: 12 }}>{notation}</code>}
                   <div className="flex gap-2">
                     <button onClick={() => place()} disabled={clickPoints.length < pointsNeeded}
-                      style={{ background: clickPoints.length >= pointsNeeded ? C.cyan : C.steelDim, color: C.graphite, fontWeight: 700, fontSize: 12, padding: '8px 16px', border: 'none', flex: 1, cursor: clickPoints.length >= pointsNeeded ? 'pointer' : 'default' }}>Place</button>
-                    <button onClick={() => selectFigure(selectedFig)} style={{ color: C.steelDim, border: `1px solid ${C.steelDim}40`, fontSize: 12, padding: '8px 12px' }}>Reset points</button>
+                      style={{ background: clickPoints.length >= pointsNeeded ? C.cyan : C.steelDim, color: C.graphite, fontWeight: 700, fontSize: 12, padding: '8px 16px', border: 'none', flex: 1, cursor: clickPoints.length >= pointsNeeded ? 'pointer' : 'default' }}>{t('Place')}</button>
+                    <button onClick={() => selectFigure(selectedFig)} style={{ color: C.steelDim, border: `1px solid ${C.steelDim}40`, fontSize: 12, padding: '8px 12px' }}>{t('Reset points')}</button>
                   </div>
                 </div>
               ) : (
                 <div style={{ border: `1px solid ${C.steelDim}30`, background: C.graphite2 }} className="p-5">
-                  <p style={{ color: C.steelDim, fontSize: 13 }}>Pick a figure below to start placing.</p>
+                  <p style={{ color: C.steelDim, fontSize: 13 }}>{t('Pick a figure below to start placing.')}</p>
                 </div>
               )}
-              <FigureBankPanel title="ALL 27 FIGURES — FREE PLACEMENT" panelColor={C.steel} itemColor={C.cyan}
+              <FigureBankPanel title={t('ALL 27 FIGURES — FREE PLACEMENT')} panelColor={C.steel} itemColor={C.cyan}
                 onSelect={selectFigure} getStatus={() => ({ used: false, actionable: true, hint: '' })} />
             </div>
           </div>
@@ -2537,6 +2507,7 @@ function SandboxPage({ setPage: _setPage }: { setPage: (p: Page) => void }) {
 
 // ── Auth Page — Light Deck bg, flip card ──────────────────────────────────────
 function AuthPage({ onAuth, setPage, recoveryMode }: { onAuth: () => void; setPage: (p: Page) => void; recoveryMode?: boolean }) {
+  const { t } = useLang()
   const [isSignUp, setIsSignUp] = useState(false)
   const [form, setForm] = useState({ firstName: '', lastName: '', nickname: '', useNickname: false, email: '', password: '', confirm: '', agree: false, sendNews: false })
   const [signIn, setSignIn] = useState({ email: '', password: '' })
@@ -2586,7 +2557,7 @@ function AuthPage({ onAuth, setPage, recoveryMode }: { onAuth: () => void; setPa
 
   const handleForgotSubmit = async () => {
     if (forgotSubmitting) return
-    if (!forgotEmail.includes('@')) { setForgotError('Enter a valid email address'); return }
+    if (!forgotEmail.includes('@')) { setForgotError(t('Enter a valid email address')); return }
     setForgotSubmitting(true)
     setForgotError('')
     const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, { redirectTo: window.location.origin })
@@ -2597,8 +2568,8 @@ function AuthPage({ onAuth, setPage, recoveryMode }: { onAuth: () => void; setPa
 
   const handleRecoverySubmit = async () => {
     if (recoverySubmitting) return
-    if (newPassword.length < 8) { setRecoveryError('Minimum 8 characters'); return }
-    if (newPassword !== newPasswordConfirm) { setRecoveryError('Passwords do not match'); return }
+    if (newPassword.length < 8) { setRecoveryError(t('Minimum 8 characters')); return }
+    if (newPassword !== newPasswordConfirm) { setRecoveryError(t('Passwords do not match')); return }
     setRecoverySubmitting(true)
     setRecoveryError('')
     const { error } = await supabase.auth.updateUser({ password: newPassword })
@@ -2609,18 +2580,18 @@ function AuthPage({ onAuth, setPage, recoveryMode }: { onAuth: () => void; setPa
 
   const validateSignUp = () => {
     const e: Record<string, string> = {}
-    if (!form.firstName.trim()) e.firstName = 'Required'
-    if (!form.email.includes('@')) e.email = 'Enter a valid email address'
-    if (form.password.length < 8) e.password = 'Minimum 8 characters'
-    if (form.password !== form.confirm) e.confirm = 'Passwords do not match'
-    if (!form.agree) e.agree = 'You must agree to the rules to continue'
+    if (!form.firstName.trim()) e.firstName = t('Required')
+    if (!form.email.includes('@')) e.email = t('Enter a valid email address')
+    if (form.password.length < 8) e.password = t('Minimum 8 characters')
+    if (form.password !== form.confirm) e.confirm = t('Passwords do not match')
+    if (!form.agree) e.agree = t('You must agree to the rules to continue')
     return e
   }
 
   const validateSignIn = () => {
     const e: Record<string, string> = {}
-    if (!signIn.email.includes('@')) e.signInEmail = 'Enter a valid email address'
-    if (!signIn.password) e.signInPassword = 'Required'
+    if (!signIn.email.includes('@')) e.signInEmail = t('Enter a valid email address')
+    if (!signIn.password) e.signInPassword = t('Required')
     return e
   }
 
@@ -2656,7 +2627,7 @@ function AuthPage({ onAuth, setPage, recoveryMode }: { onAuth: () => void; setPa
       })
       setSubmitting(false)
       if (error) {
-        setErrors({ email: /already/i.test(error.message) ? 'This email is already used' : error.message })
+        setErrors({ email: /already/i.test(error.message) ? t('This email is already used') : error.message })
         return
       }
       setSubmitted(true)
@@ -2668,7 +2639,7 @@ function AuthPage({ onAuth, setPage, recoveryMode }: { onAuth: () => void; setPa
       const { error } = await supabase.auth.signInWithPassword({ email: signIn.email, password: signIn.password })
       setSubmitting(false)
       if (error) {
-        setErrors({ signInPassword: 'Incorrect email or password' })
+        setErrors({ signInPassword: t('Incorrect email or password') })
         return
       }
       onAuth()
@@ -2684,11 +2655,11 @@ function AuthPage({ onAuth, setPage, recoveryMode }: { onAuth: () => void; setPa
             <div style={{ background: C.cyan, width: 48, height: 48, margin: '0 auto 20px' }} className="flex items-center justify-center">
               <svg width={24} height={24} fill="none" stroke={C.graphite} strokeWidth={2.5}><polyline points="4,12 10,18 20,6" /></svg>
             </div>
-            <h2 style={{ color: C.deck, fontSize: 22, fontWeight: 700, marginBottom: 12 }}>Password updated</h2>
+            <h2 style={{ color: C.deck, fontSize: 22, fontWeight: 700, marginBottom: 12 }}>{t('Password updated')}</h2>
             <p style={{ color: C.steel, fontSize: 14, lineHeight: 1.7, marginBottom: 28 }}>
-              Your new password is set. You're already signed in with it.
+              {t("Your new password is set. You're already signed in with it.")}
             </p>
-            <button onClick={() => setPage('home')} style={{ background: C.blue, color: C.deck, fontSize: 14, fontWeight: 600, padding: '12px 24px', border: 'none', cursor: 'pointer' }}>Continue</button>
+            <button onClick={() => setPage('home')} style={{ background: C.blue, color: C.deck, fontSize: 14, fontWeight: 600, padding: '12px 24px', border: 'none', cursor: 'pointer' }}>{t('Continue')}</button>
           </div>
         </div>
       )
@@ -2699,17 +2670,17 @@ function AuthPage({ onAuth, setPage, recoveryMode }: { onAuth: () => void; setPa
           <div style={{ background: C.graphite2, border: `1px solid ${C.cyan}28`, padding: 40, maxWidth: 420, width: '100%', textAlign: 'center' }}>
             {recoveryExpired ? (
               <>
-                <h2 style={{ color: C.deck, fontSize: 22, fontWeight: 700, marginBottom: 12 }}>Link expired</h2>
+                <h2 style={{ color: C.deck, fontSize: 22, fontWeight: 700, marginBottom: 12 }}>{t('Link expired')}</h2>
                 <p style={{ color: C.steel, fontSize: 14, lineHeight: 1.7, marginBottom: 28 }}>
-                  This password reset link has expired or was already used. Request a new one from the sign-in page.
+                  {t('This password reset link has expired or was already used. Request a new one from the sign-in page.')}
                 </p>
                 <button onClick={() => { window.location.href = window.location.origin }}
-                  style={{ background: C.blue, color: C.deck, fontSize: 14, fontWeight: 600, padding: '12px 24px', border: 'none', cursor: 'pointer' }}>Back to sign in</button>
+                  style={{ background: C.blue, color: C.deck, fontSize: 14, fontWeight: 600, padding: '12px 24px', border: 'none', cursor: 'pointer' }}>{t('Back to sign in')}</button>
               </>
             ) : (
               <>
-                <h2 style={{ color: C.deck, fontSize: 22, fontWeight: 700, marginBottom: 12 }}>Preparing password reset…</h2>
-                <p style={{ color: C.steel, fontSize: 14, lineHeight: 1.7 }}>Verifying your reset link, one moment…</p>
+                <h2 style={{ color: C.deck, fontSize: 22, fontWeight: 700, marginBottom: 12 }}>{t('Preparing password reset…')}</h2>
+                <p style={{ color: C.steel, fontSize: 14, lineHeight: 1.7 }}>{t('Verifying your reset link, one moment…')}</p>
               </>
             )}
           </div>
@@ -2719,23 +2690,23 @@ function AuthPage({ onAuth, setPage, recoveryMode }: { onAuth: () => void; setPa
     return (
       <div style={{ background: C.graphite, minHeight: '100vh' }} className="flex items-center justify-center px-4">
         <div style={{ background: C.graphite2, border: `1px solid ${C.cyan}28`, padding: 40, maxWidth: 420, width: '100%' }}>
-          <h2 style={{ color: C.deck, fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Set a new password</h2>
-          <p style={{ color: C.steel, fontSize: 13, lineHeight: 1.6, marginBottom: 24 }}>Choose a new password for your account.</p>
+          <h2 style={{ color: C.deck, fontSize: 22, fontWeight: 700, marginBottom: 8 }}>{t('Set a new password')}</h2>
+          <p style={{ color: C.steel, fontSize: 13, lineHeight: 1.6, marginBottom: 24 }}>{t('Choose a new password for your account.')}</p>
           <div className="flex flex-col gap-4">
             <div>
-              <label style={{ color: C.steel, fontSize: 12, fontWeight: 500, display: 'block', marginBottom: 5 }}>New password</label>
+              <label style={{ color: C.steel, fontSize: 12, fontWeight: 500, display: 'block', marginBottom: 5 }}>{t('New password')}</label>
               <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="••••••••"
                 style={{ border: `1px solid ${C.steelDim}`, color: C.deck, fontSize: 14, padding: '10px 12px', width: '100%', outline: 'none', fontFamily: 'Inter, sans-serif', background: C.graphite }} />
             </div>
             <div>
-              <label style={{ color: C.steel, fontSize: 12, fontWeight: 500, display: 'block', marginBottom: 5 }}>Confirm new password</label>
+              <label style={{ color: C.steel, fontSize: 12, fontWeight: 500, display: 'block', marginBottom: 5 }}>{t('Confirm new password')}</label>
               <input type="password" value={newPasswordConfirm} onChange={e => setNewPasswordConfirm(e.target.value)} placeholder="••••••••"
                 style={{ border: `1px solid ${C.steelDim}`, color: C.deck, fontSize: 14, padding: '10px 12px', width: '100%', outline: 'none', fontFamily: 'Inter, sans-serif', background: C.graphite }} />
             </div>
             {recoveryError && <p style={{ color: C.red, fontSize: 12 }}>{recoveryError}</p>}
             <button onClick={handleRecoverySubmit} disabled={recoverySubmitting}
               style={{ background: C.blue, color: C.deck, fontSize: 14, fontWeight: 600, padding: '12px 0', width: '100%', border: 'none', cursor: recoverySubmitting ? 'default' : 'pointer', opacity: recoverySubmitting ? 0.6 : 1 }}>
-              {recoverySubmitting ? 'Saving…' : 'Save new password'}
+              {recoverySubmitting ? t('Saving…') : t('Save new password')}
             </button>
           </div>
         </div>
@@ -2751,11 +2722,11 @@ function AuthPage({ onAuth, setPage, recoveryMode }: { onAuth: () => void; setPa
             <div style={{ background: C.cyan, width: 48, height: 48, margin: '0 auto 20px' }} className="flex items-center justify-center">
               <svg width={24} height={24} fill="none" stroke={C.graphite} strokeWidth={2.5}><polyline points="4,12 10,18 20,6" /></svg>
             </div>
-            <h2 style={{ color: C.deck, fontSize: 22, fontWeight: 700, marginBottom: 12 }}>Check your email</h2>
+            <h2 style={{ color: C.deck, fontSize: 22, fontWeight: 700, marginBottom: 12 }}>{t('Check your email')}</h2>
             <p style={{ color: C.steel, fontSize: 14, lineHeight: 1.7, marginBottom: 28 }}>
-              We sent a password reset link to <strong>{forgotEmail}</strong>. Follow it to choose a new password.
+              {t('We sent a password reset link to {email}. Follow it to choose a new password.', { email: forgotEmail })}
             </p>
-            <button onClick={() => setShowForgot(false)} style={{ color: C.cyan, fontSize: 13 }}>Back to sign in</button>
+            <button onClick={() => setShowForgot(false)} style={{ color: C.cyan, fontSize: 13 }}>{t('Back to sign in')}</button>
           </div>
         </div>
       )
@@ -2763,20 +2734,20 @@ function AuthPage({ onAuth, setPage, recoveryMode }: { onAuth: () => void; setPa
     return (
       <div style={{ background: C.graphite, minHeight: '100vh' }} className="flex items-center justify-center px-4">
         <div style={{ background: C.graphite2, border: `1px solid ${C.cyan}28`, padding: 40, maxWidth: 420, width: '100%' }}>
-          <h2 style={{ color: C.deck, fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Reset your password</h2>
-          <p style={{ color: C.steel, fontSize: 13, lineHeight: 1.6, marginBottom: 24 }}>Enter your email and we'll send you a reset link.</p>
+          <h2 style={{ color: C.deck, fontSize: 22, fontWeight: 700, marginBottom: 8 }}>{t('Reset your password')}</h2>
+          <p style={{ color: C.steel, fontSize: 13, lineHeight: 1.6, marginBottom: 24 }}>{t("Enter your email and we'll send you a reset link.")}</p>
           <div className="flex flex-col gap-4">
             <div>
-              <label style={{ color: C.steel, fontSize: 12, fontWeight: 500, display: 'block', marginBottom: 5 }}>Email</label>
+              <label style={{ color: C.steel, fontSize: 12, fontWeight: 500, display: 'block', marginBottom: 5 }}>{t('Email')}</label>
               <input type="email" value={forgotEmail} onChange={e => setForgotEmail(e.target.value)} placeholder="you@example.com"
                 style={{ border: `1px solid ${C.steelDim}`, color: C.deck, fontSize: 14, padding: '10px 12px', width: '100%', outline: 'none', fontFamily: 'Inter, sans-serif', background: C.graphite }} />
             </div>
             {forgotError && <p style={{ color: C.red, fontSize: 12 }}>{forgotError}</p>}
             <button onClick={handleForgotSubmit} disabled={forgotSubmitting}
               style={{ background: C.blue, color: C.deck, fontSize: 14, fontWeight: 600, padding: '12px 0', width: '100%', border: 'none', cursor: forgotSubmitting ? 'default' : 'pointer', opacity: forgotSubmitting ? 0.6 : 1 }}>
-              {forgotSubmitting ? 'Sending…' : 'Send reset link'}
+              {forgotSubmitting ? t('Sending…') : t('Send reset link')}
             </button>
-            <button onClick={() => setShowForgot(false)} style={{ color: C.steelDim, fontSize: 13 }}>Back to sign in</button>
+            <button onClick={() => setShowForgot(false)} style={{ color: C.steelDim, fontSize: 13 }}>{t('Back to sign in')}</button>
           </div>
         </div>
       </div>
@@ -2790,11 +2761,11 @@ function AuthPage({ onAuth, setPage, recoveryMode }: { onAuth: () => void; setPa
           <div style={{ background: C.cyan, width: 48, height: 48, margin: '0 auto 20px' }} className="flex items-center justify-center">
             <svg width={24} height={24} fill="none" stroke={C.graphite} strokeWidth={2.5}><polyline points="4,12 10,18 20,6" /></svg>
           </div>
-          <h2 style={{ color: C.deck, fontSize: 22, fontWeight: 700, marginBottom: 12 }}>Check your email</h2>
+          <h2 style={{ color: C.deck, fontSize: 22, fontWeight: 700, marginBottom: 12 }}>{t('Check your email')}</h2>
           <p style={{ color: C.steel, fontSize: 14, lineHeight: 1.7, marginBottom: 28 }}>
-            We sent a confirmation link to <strong>{form.email}</strong>. Follow it to activate your account.
+            {t('We sent a confirmation link to {email}. Follow it to activate your account.', { email: form.email })}
           </p>
-          <button style={{ color: C.steelDim, fontSize: 13, textDecoration: 'underline' }}>Resend (available after 60s)</button>
+          <button style={{ color: C.steelDim, fontSize: 13, textDecoration: 'underline' }}>{t('Resend (available after 60s)')}</button>
         </div>
       </div>
     )
@@ -2830,35 +2801,35 @@ function AuthPage({ onAuth, setPage, recoveryMode }: { onAuth: () => void; setPa
           {/* Sign In — front */}
           <div style={{ position: 'absolute', inset: 0, backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}>
             <div style={{ background: C.graphite2, border: `1px solid ${C.cyan}28`, padding: '36px 36px 32px' }}>
-              <h2 style={{ color: C.deck, fontSize: 22, fontWeight: 700, marginBottom: 6 }}>Sign In</h2>
+              <h2 style={{ color: C.deck, fontSize: 22, fontWeight: 700, marginBottom: 6 }}>{t('Sign In')}</h2>
               <p style={{ color: C.steel, fontSize: 13, marginBottom: 24 }}>
-                New here?{' '}
-                <button onClick={() => setIsSignUp(true)} style={{ color: C.cyan, fontWeight: 600, textDecoration: 'underline' }}>Create an account</button>
+                {t('New here?')}{' '}
+                <button onClick={() => setIsSignUp(true)} style={{ color: C.cyan, fontWeight: 600, textDecoration: 'underline' }}>{t('Create an account')}</button>
               </p>
               <div className="flex flex-col gap-4">
                 <div>
-                  <label style={lbl}>Email</label>
+                  <label style={lbl}>{t('Email')}</label>
                   <input type="email" value={signIn.email} onChange={e => updSignIn('email', e.target.value)} placeholder="you@example.com" style={inp(errors.signInEmail)} />
                   {errors.signInEmail && <p style={err}>{errors.signInEmail}</p>}
                 </div>
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label style={lbl}>Password</label>
-                    <button onClick={() => { setForgotEmail(signIn.email); setForgotError(''); setForgotSent(false); setShowForgot(true) }} style={{ color: C.cyan, fontSize: 12 }}>Forgot password?</button>
+                    <label style={lbl}>{t('Password')}</label>
+                    <button onClick={() => { setForgotEmail(signIn.email); setForgotError(''); setForgotSent(false); setShowForgot(true) }} style={{ color: C.cyan, fontSize: 12 }}>{t('Forgot password?')}</button>
                   </div>
                   <input type="password" value={signIn.password} onChange={e => updSignIn('password', e.target.value)} placeholder="••••••••" style={inp(errors.signInPassword)} />
                   {errors.signInPassword && <p style={err}>{errors.signInPassword}</p>}
                 </div>
                 <button onClick={handleSubmit} disabled={submitting} style={{ ...primaryBtn, opacity: submitting ? 0.6 : 1, cursor: submitting ? 'default' : 'pointer' }} onMouseOver={e => (e.currentTarget.style.filter = 'brightness(0.9)')} onMouseOut={e => (e.currentTarget.style.filter = '')}>
-                  {submitting ? 'Signing in…' : 'Sign In'}
+                  {submitting ? t('Signing in…') : t('Sign in')}
                 </button>
                 <div style={{ borderTop: `1px solid ${C.steelDim}40`, paddingTop: 16 }}>
                   <button style={{ border: `1px solid ${C.cyan}50`, color: C.cyan, background: `${C.cyan}10`, fontSize: 13, fontWeight: 500, padding: '10px 0', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                     <TelegramIcon size={16} />
-                    Continue with Telegram
-                    <span style={{ color: C.steelDim, fontSize: 11 }}>(optional)</span>
+                    {t('Continue with Telegram')}
+                    <span style={{ color: C.steelDim, fontSize: 11 }}>{t('(optional)')}</span>
                   </button>
-                  <p style={{ color: C.steelDim, fontSize: 11, marginTop: 6, textAlign: 'center' }}>Telegram login links your account for quick access from the WebView. Email login is the primary method.</p>
+                  <p style={{ color: C.steelDim, fontSize: 11, marginTop: 6, textAlign: 'center' }}>{t('Telegram login links your account for quick access from the WebView. Email login is the primary method.')}</p>
                 </div>
               </div>
             </div>
@@ -2867,60 +2838,60 @@ function AuthPage({ onAuth, setPage, recoveryMode }: { onAuth: () => void; setPa
           {/* Sign Up — back */}
           <div style={{ position: 'absolute', inset: 0, backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', transform: 'rotateY(180deg)', overflowY: 'auto' }}>
             <div style={{ background: C.graphite2, border: `1px solid ${C.cyan}28`, padding: '36px 36px 32px' }}>
-              <h2 style={{ color: C.deck, fontSize: 22, fontWeight: 700, marginBottom: 6 }}>Create Account</h2>
+              <h2 style={{ color: C.deck, fontSize: 22, fontWeight: 700, marginBottom: 6 }}>{t('Create Account')}</h2>
               <p style={{ color: C.steel, fontSize: 13, marginBottom: 24 }}>
-                Already registered?{' '}
-                <button onClick={() => { setIsSignUp(false); setErrors({}) }} style={{ color: C.cyan, fontWeight: 600, textDecoration: 'underline' }}>Sign in</button>
+                {t('Already registered?')}{' '}
+                <button onClick={() => { setIsSignUp(false); setErrors({}) }} style={{ color: C.cyan, fontWeight: 600, textDecoration: 'underline' }}>{t('Sign in')}</button>
               </p>
               <div className="flex flex-col gap-4">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label style={lbl}>First Name</label>
+                    <label style={lbl}>{t('First Name')}</label>
                     <input value={form.firstName} onChange={e => upd('firstName', e.target.value)} style={inp(errors.firstName)} />
                     {errors.firstName && <p style={err}>{errors.firstName}</p>}
                   </div>
                   <div>
-                    <label style={lbl}>Last Name</label>
+                    <label style={lbl}>{t('Last Name')}</label>
                     <input value={form.lastName} onChange={e => upd('lastName', e.target.value)} style={inp()} />
                   </div>
                 </div>
                 <div>
-                  <label style={lbl}>Nickname</label>
-                  <input value={form.nickname} onChange={e => upd('nickname', e.target.value)} placeholder="Optional" style={{ ...inp(), fontFamily: "'JetBrains Mono',monospace" }} />
+                  <label style={lbl}>{t('Nickname')}</label>
+                  <input value={form.nickname} onChange={e => upd('nickname', e.target.value)} placeholder={t('Optional')} style={{ ...inp(), fontFamily: "'JetBrains Mono',monospace" }} />
                 </div>
                 <label className="flex items-start gap-3 cursor-pointer">
                   <Checkbox checked={form.useNickname} onChange={() => upd('useNickname', !form.useNickname)} />
                   <div>
-                    <span style={{ color: C.deck, fontSize: 13, fontWeight: 500 }}>Use nickname on PuzzleStow</span>
-                    <p style={{ color: C.steelDim, fontSize: 11, lineHeight: 1.5, marginTop: 2 }}>Your nickname replaces your display name on leaderboards, match history, and badges — in PuzzleStow only, not on PairSec service bookings.</p>
+                    <span style={{ color: C.deck, fontSize: 13, fontWeight: 500 }}>{t('Use nickname on PuzzleStow')}</span>
+                    <p style={{ color: C.steelDim, fontSize: 11, lineHeight: 1.5, marginTop: 2 }}>{t('Your nickname replaces your display name on leaderboards, match history, and badges — in PuzzleStow only, not on PairSec service bookings.')}</p>
                   </div>
                 </label>
                 <div>
-                  <label style={lbl}>Email</label>
+                  <label style={lbl}>{t('Email')}</label>
                   <input type="email" value={form.email} onChange={e => upd('email', e.target.value)} placeholder="you@example.com" style={inp(errors.email)} />
                   {errors.email && <p style={err}>{errors.email}</p>}
                 </div>
                 <div>
-                  <label style={lbl}>Password</label>
+                  <label style={lbl}>{t('Password')}</label>
                   <input type="password" value={form.password} onChange={e => upd('password', e.target.value)} placeholder="Minimum 8 characters" style={inp(errors.password)} />
                   {errors.password && <p style={err}>{errors.password}</p>}
                 </div>
                 <div>
-                  <label style={lbl}>Confirm Password</label>
+                  <label style={lbl}>{t('Confirm Password')}</label>
                   <input type="password" value={form.confirm} onChange={e => upd('confirm', e.target.value)} style={inp(errors.confirm)} />
                   {errors.confirm && <p style={err}>{errors.confirm}</p>}
                 </div>
                 <label className="flex items-start gap-3 cursor-pointer">
                   <Checkbox checked={form.agree} onChange={() => upd('agree', !form.agree)} />
-                  <span style={{ color: errors.agree ? C.red : C.steel, fontSize: 13 }}>I have read and agree to the game rules and terms of use</span>
+                  <span style={{ color: errors.agree ? C.red : C.steel, fontSize: 13 }}>{t('I have read and agree to the game rules and terms of use')}</span>
                 </label>
                 {errors.agree && <p style={err}>{errors.agree}</p>}
                 <label className="flex items-start gap-3 cursor-pointer">
                   <Checkbox checked={form.sendNews} onChange={() => upd('sendNews', !form.sendNews)} />
-                  <span style={{ color: C.steel, fontSize: 13 }}>Send me news and updates about PuzzleStow</span>
+                  <span style={{ color: C.steel, fontSize: 13 }}>{t('Send me news and updates about PuzzleStow')}</span>
                 </label>
                 <button onClick={handleSubmit} disabled={submitting} style={{ ...primaryBtn, opacity: submitting ? 0.6 : 1, cursor: submitting ? 'default' : 'pointer' }} onMouseOver={e => (e.currentTarget.style.filter = 'brightness(0.9)')} onMouseOut={e => (e.currentTarget.style.filter = '')}>
-                  {submitting ? 'Creating account…' : 'Create Account'}
+                  {submitting ? t('Creating account…') : t('Create Account')}
                 </button>
               </div>
             </div>
@@ -3138,6 +3109,7 @@ function exportCompletePackPdf() {
 }
 
 function PrintPlayPage() {
+  const { t } = useLang()
   return (
     <div style={{ background: C.graphite, minHeight: '100vh', paddingTop: '3.5rem' }}>
       <div className="max-w-5xl mx-auto px-4 md:px-6 py-14">
@@ -3162,28 +3134,28 @@ function PrintPlayPage() {
         </div>
 
         {/* Both container templates side by side */}
-        <h2 style={{ color: C.deck }} className="text-xl font-semibold mb-6">Container Templates</h2>
+        <h2 style={{ color: C.deck }} className="text-xl font-semibold mb-6">{t('Container Templates')}</h2>
         <div className="grid md:grid-cols-2 gap-6 mb-12">
           {[
-            { name: '15×10 Standard', label: 'COMPETITIVE', color: C.cyan, desc: 'Used in all rated matches and practice sessions. Rows A–J (10 rows). The official container for qualification play.', rows: 10 as const, sep: false, badge: 'Rated Play · Practice' },
-            { name: '15×11 Beginner', label: 'TRAINING', color: C.steel, desc: 'Includes the extra row K with the bold J/K separator line. Recommended while learning to stack. The line marks the competitive ceiling.', rows: 11 as const, sep: true, badge: 'Sandbox · Learning' },
-          ].map(t => (
-            <div key={t.name} style={{ border: `1px solid ${t.color}30`, background: C.graphite2, padding: 20 }}>
+            { name: t('15×10 Standard'), label: t('COMPETITIVE'), color: C.cyan, desc: t('Used in all rated matches and practice sessions. Rows A–J (10 rows). The official container for qualification play.'), rows: 10 as const, sep: false, badge: t('Rated Play · Practice') },
+            { name: t('15×11 Beginner'), label: t('TRAINING'), color: C.steel, desc: t('Includes the extra row K with the bold J/K separator line. Recommended while learning to stack. The line marks the competitive ceiling.'), rows: 11 as const, sep: true, badge: t('Sandbox · Learning') },
+          ].map(tpl => (
+            <div key={tpl.name} style={{ border: `1px solid ${tpl.color}30`, background: C.graphite2, padding: 20 }}>
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <span style={{ color: t.color, fontFamily: "'JetBrains Mono',monospace", fontSize: 10, letterSpacing: '0.12em' }}>{t.label}</span>
-                  <h3 style={{ color: C.deck, fontSize: 16, fontWeight: 600, marginTop: 3 }}>{t.name}</h3>
+                  <span style={{ color: tpl.color, fontFamily: "'JetBrains Mono',monospace", fontSize: 10, letterSpacing: '0.12em' }}>{tpl.label}</span>
+                  <h3 style={{ color: C.deck, fontSize: 16, fontWeight: 600, marginTop: 3 }}>{tpl.name}</h3>
                 </div>
-                <span style={{ background: `${t.color}20`, color: t.color, fontSize: 10, padding: '3px 10px', fontFamily: "'JetBrains Mono',monospace" }}>{t.badge}</span>
+                <span style={{ background: `${tpl.color}20`, color: tpl.color, fontSize: 10, padding: '3px 10px', fontFamily: "'JetBrains Mono',monospace" }}>{tpl.badge}</span>
               </div>
-              <p style={{ color: C.steel, fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>{t.desc}</p>
+              <p style={{ color: C.steel, fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>{tpl.desc}</p>
               <div className="overflow-x-auto mb-4">
-                <ContainerGrid filledCells={new Set()} cellSize={15} rows={t.rows} showJKSeparator={t.sep} />
+                <ContainerGrid filledCells={new Set()} cellSize={15} rows={tpl.rows} showJKSeparator={tpl.sep} />
               </div>
-              <button onClick={() => exportContainerTemplatePdf(t.rows, t.sep, t.name)}
-                style={{ background: t.color, color: t.color === C.steel ? C.graphite : C.graphite, fontWeight: 600, fontSize: 13, padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', border: 'none' }}>
+              <button onClick={() => exportContainerTemplatePdf(tpl.rows, tpl.sep, tpl.name)}
+                style={{ background: tpl.color, color: tpl.color === C.steel ? C.graphite : C.graphite, fontWeight: 600, fontSize: 13, padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', border: 'none' }}>
                 <svg width={14} height={14} fill="none" stroke="currentColor" strokeWidth={2}><path d="M7 2v8M3 7l4 4 4-4M2 11h10v2H2z"/></svg>
-                Download PDF — {t.name}
+                {t('Download PDF — {name}', { name: tpl.name })}
               </button>
             </div>
           ))}
@@ -3191,8 +3163,8 @@ function PrintPlayPage() {
 
         {/* Figures reference */}
         <div style={{ border: `1px solid ${C.cyan}22`, background: C.graphite2, padding: 24 }}>
-          <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.14em', marginBottom: 5 }}>FIGURE REFERENCE</p>
-          <h3 style={{ color: C.deck, fontSize: 16, fontWeight: 600, marginBottom: 16 }}>All 27 Figures — Quick Reference Sheet</h3>
+          <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.14em', marginBottom: 5 }}>{t('FIGURE REFERENCE')}</p>
+          <h3 style={{ color: C.deck, fontSize: 16, fontWeight: 600, marginBottom: 16 }}>{t('All 27 Figures — Quick Reference Sheet')}</h3>
           <div className="grid grid-cols-5 sm:grid-cols-7 md:grid-cols-9 gap-2 mb-5">
             {FIGURES.map(fig => (
               <div key={fig.id} style={{ border: `1px solid ${C.cyan}18`, background: C.graphite, padding: 4 }} className="flex flex-col items-center gap-1">
@@ -3205,7 +3177,7 @@ function PrintPlayPage() {
           <button onClick={exportCompletePackPdf}
             style={{ background: C.blue, color: C.deck, fontWeight: 600, fontSize: 13, padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', border: 'none' }}>
             <svg width={14} height={14} fill="none" stroke="currentColor" strokeWidth={2}><path d="M7 2v8M3 7l4 4 4-4M2 11h10v2H2z"/></svg>
-            Download Complete Pack (Rules + Both Templates + Figures)
+            {t('Download Complete Pack (Rules + Both Templates + Figures)')}
           </button>
         </div>
       </div>
@@ -3215,6 +3187,7 @@ function PrintPlayPage() {
 
 // ── Profile Page ──────────────────────────────────────────────────────────────
 function ProfilePage({ session, profile, onProfileUpdated, profileLoading, profileError, onRetryProfile }: { session: Session | null; profile: PuzzleStowProfile | null; onProfileUpdated: (p: PuzzleStowProfile) => void; profileLoading?: boolean; profileError?: string | null; onRetryProfile?: () => void }) {
+  const { t } = useLang()
   const [displayName, setDisplayName] = useState('')
   const [nickname, setNickname] = useState('')
   const [useNickname, setUseNickname] = useState(false)
@@ -3261,7 +3234,7 @@ function ProfilePage({ session, profile, onProfileUpdated, profileLoading, profi
       if (error) throw new Error(error.message)
       if (data) onProfileUpdated(data as PuzzleStowProfile)
     } catch (err) {
-      setAvatarError(err instanceof Error ? err.message : 'Could not update avatar')
+      setAvatarError(err instanceof Error ? err.message : t('Could not update avatar'))
     } finally {
       setAvatarUploading(false)
     }
@@ -3305,15 +3278,15 @@ function ProfilePage({ session, profile, onProfileUpdated, profileLoading, profi
   if (profileLoading) {
     return (
       <div style={{ background: C.graphite, minHeight: '100vh', paddingTop: '3.5rem' }} className="flex items-center justify-center">
-        <p style={{ color: C.steel, fontSize: 14 }}>Loading your profile…</p>
+        <p style={{ color: C.steel, fontSize: 14 }}>{t('Loading your profile…')}</p>
       </div>
     )
   }
   if (profileError) {
     return (
       <div style={{ background: C.graphite, minHeight: '100vh', paddingTop: '3.5rem' }} className="flex flex-col items-center justify-center px-4 gap-4">
-        <p style={{ color: C.red, fontSize: 14, textAlign: 'center' }}>Couldn't load your profile: {profileError}</p>
-        <button onClick={onRetryProfile} style={{ border: `1px solid ${C.cyan}50`, color: C.cyan, background: `${C.cyan}10`, fontSize: 13, fontWeight: 500, padding: '8px 20px', cursor: 'pointer' }}>Retry</button>
+        <p style={{ color: C.red, fontSize: 14, textAlign: 'center' }}>{t("Couldn't load your profile: {err}", { err: profileError ?? '' })}</p>
+        <button onClick={onRetryProfile} style={{ border: `1px solid ${C.cyan}50`, color: C.cyan, background: `${C.cyan}10`, fontSize: 13, fontWeight: 500, padding: '8px 20px', cursor: 'pointer' }}>{t('Retry')}</button>
       </div>
     )
   }
@@ -3322,9 +3295,9 @@ function ProfilePage({ session, profile, onProfileUpdated, profileLoading, profi
     <div style={{ background: C.graphite, minHeight: '100vh', paddingTop: '3.5rem' }}>
       <div className="max-w-2xl mx-auto px-4 md:px-6 py-14">
         <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.14em' }} className="mb-3">PROFILE</p>
-        <h1 style={{ color: C.deck }} className="text-3xl font-bold mb-10">Account Settings</h1>
+        <h1 style={{ color: C.deck }} className="text-3xl font-bold mb-10">{t('Account Settings')}</h1>
         <div style={{ border: `1px solid ${C.cyan}28`, background: C.graphite2 }} className="p-8 mb-5">
-          <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.1em', marginBottom: 18 }}>IDENTITY</p>
+          <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.1em', marginBottom: 18 }}>{t('IDENTITY')}</p>
           <div className="flex flex-col gap-5">
             <div className="flex items-center gap-5">
               <div style={{ width: 72, height: 72, borderRadius: '50%', overflow: 'hidden', background: C.graphite, border: `1px solid ${C.steelDim}`, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -3336,18 +3309,18 @@ function ProfilePage({ session, profile, onProfileUpdated, profileLoading, profi
                 <input ref={avatarInputRef} type="file" accept="image/*" onChange={handleAvatarChange} style={{ display: 'none' }} />
                 <button type="button" onClick={() => avatarInputRef.current?.click()} disabled={avatarUploading}
                   style={{ border: `1px solid ${C.cyan}50`, color: C.cyan, background: `${C.cyan}10`, fontSize: 12, fontWeight: 500, padding: '7px 16px', cursor: avatarUploading ? 'default' : 'pointer', opacity: avatarUploading ? 0.6 : 1 }}>
-                  {avatarUploading ? 'Uploading…' : 'Change avatar'}
+                  {avatarUploading ? t('Uploading…') : t('Change avatar')}
                 </button>
                 {avatarError && <p style={{ color: C.red, fontSize: 12, marginTop: 6 }}>{avatarError}</p>}
               </div>
             </div>
             <div>
-              <label style={{ color: C.steel, fontSize: 12, fontFamily: "'JetBrains Mono',monospace", display: 'block', marginBottom: 6 }}>DISPLAY NAME</label>
+              <label style={{ color: C.steel, fontSize: 12, fontFamily: "'JetBrains Mono',monospace", display: 'block', marginBottom: 6 }}>{t('DISPLAY NAME')}</label>
               <input value={displayName} onChange={e => setDisplayName(e.target.value)} style={inp}
                 onFocus={e => (e.currentTarget.style.borderColor = C.cyan)} onBlur={e => (e.currentTarget.style.borderColor = C.steelDim)} />
             </div>
             <div>
-              <label style={{ color: C.steel, fontSize: 12, fontFamily: "'JetBrains Mono',monospace", display: 'block', marginBottom: 6 }}>NICKNAME</label>
+              <label style={{ color: C.steel, fontSize: 12, fontFamily: "'JetBrains Mono',monospace", display: 'block', marginBottom: 6 }}>{t('NICKNAME')}</label>
               <input value={nickname} onChange={e => setNickname(e.target.value)} style={{ ...inp, fontFamily: "'JetBrains Mono',monospace" }}
                 onFocus={e => (e.currentTarget.style.borderColor = C.cyan)} onBlur={e => (e.currentTarget.style.borderColor = C.steelDim)} />
             </div>
@@ -3358,18 +3331,18 @@ function ProfilePage({ session, profile, onProfileUpdated, profileLoading, profi
                   {useNickname && <svg width={10} height={10} viewBox="0 0 10 10" fill="none" stroke={C.graphite} strokeWidth={2}><polyline points="1.5,5 4,7.5 8.5,2.5" /></svg>}
                 </div>
                 <div>
-                  <p style={{ color: C.deck, fontSize: 14, fontWeight: 500 }}>Use nickname</p>
-                  <p style={{ color: C.steelDim, fontSize: 12, lineHeight: 1.5, marginTop: 4 }}>When checked, your nickname replaces your display name on PuzzleStow leaderboards, match history, profile cards, and Lodar Path badges.</p>
+                  <p style={{ color: C.deck, fontSize: 14, fontWeight: 500 }}>{t('Use nickname')}</p>
+                  <p style={{ color: C.steelDim, fontSize: 12, lineHeight: 1.5, marginTop: 4 }}>{t('When checked, your nickname replaces your display name on PuzzleStow leaderboards, match history, profile cards, and Lodar Path badges.')}</p>
                 </div>
               </label>
             </div>
             <div style={{ background: C.graphite, border: `1px solid ${C.steelDim}30`, padding: '12px 16px' }}>
-              <p style={{ color: C.steelDim, fontSize: 11, fontFamily: "'JetBrains Mono',monospace", marginBottom: 6 }}>SHOWN AS IN PUZZLESTOW</p>
+              <p style={{ color: C.steelDim, fontSize: 11, fontFamily: "'JetBrains Mono',monospace", marginBottom: 6 }}>{t('SHOWN AS IN PUZZLESTOW')}</p>
               <span style={{ color: C.deck, fontSize: 16, fontWeight: 600, fontFamily: useNickname ? "'JetBrains Mono',monospace" : 'inherit' }}>{shownAs}</span>
             </div>
             <div style={{ background: `${C.blue}15`, border: `1px solid ${C.blue}40`, padding: '12px 16px' }}>
-              <p style={{ color: C.blue, fontSize: 11, fontFamily: "'JetBrains Mono',monospace", marginBottom: 5, letterSpacing: '0.08em' }}>PAIRSEC SCOPE NOTE</p>
-              <p style={{ color: C.steelDim, fontSize: 12, lineHeight: 1.6 }}>This nickname toggle applies to PuzzleStow display only. It does not affect how your identity is shown for PairSec service bookings — PairSec&apos;s trust model relies on transparent identity for in-person services.</p>
+              <p style={{ color: C.blue, fontSize: 11, fontFamily: "'JetBrains Mono',monospace", marginBottom: 5, letterSpacing: '0.08em' }}>{t('PAIRSEC SCOPE NOTE')}</p>
+              <p style={{ color: C.steelDim, fontSize: 12, lineHeight: 1.6 }}>{t("This nickname toggle applies to PuzzleStow display only. It does not affect how your identity is shown for PairSec service bookings — PairSec's trust model relies on transparent identity for in-person services.")}</p>
             </div>
             <div style={{ borderTop: `1px solid ${C.steelDim}30`, paddingTop: 18 }}>
               <label className="flex items-start gap-4 cursor-pointer">
@@ -3378,27 +3351,27 @@ function ProfilePage({ session, profile, onProfileUpdated, profileLoading, profi
                   {subscribedToNews && <svg width={10} height={10} viewBox="0 0 10 10" fill="none" stroke={C.graphite} strokeWidth={2}><polyline points="1.5,5 4,7.5 8.5,2.5" /></svg>}
                 </div>
                 <div>
-                  <p style={{ color: C.deck, fontSize: 14, fontWeight: 500 }}>Send me news and updates</p>
-                  <p style={{ color: C.steelDim, fontSize: 12, lineHeight: 1.5, marginTop: 4 }}>Same subscription set at Sign Up — toggle it on or off any time, then Save Changes.</p>
+                  <p style={{ color: C.deck, fontSize: 14, fontWeight: 500 }}>{t('Send me news and updates')}</p>
+                  <p style={{ color: C.steelDim, fontSize: 12, lineHeight: 1.5, marginTop: 4 }}>{t('Same subscription set at Sign Up — toggle it on or off any time, then Save Changes.')}</p>
                 </div>
               </label>
             </div>
           </div>
           {saveError && <p style={{ color: C.red, fontSize: 12, marginTop: -6, marginBottom: 12 }}>{saveError}</p>}
           <div className="flex gap-3 mt-8">
-            <button onClick={handleSave} disabled={saving} style={{ background: C.cyan, color: C.graphite, fontWeight: 600, fontSize: 13, padding: '10px 24px', opacity: saving ? 0.6 : 1, cursor: saving ? 'default' : 'pointer' }} className="hover:brightness-110 transition-all">{saving ? 'Saving…' : 'Save Changes'}</button>
-            <button onClick={handleCancel} disabled={saving} style={{ color: C.steel, border: `1px solid ${C.steelDim}`, fontSize: 13, padding: '10px 24px' }} className="hover:text-deck transition-colors">Cancel</button>
+            <button onClick={handleSave} disabled={saving} style={{ background: C.cyan, color: C.graphite, fontWeight: 600, fontSize: 13, padding: '10px 24px', opacity: saving ? 0.6 : 1, cursor: saving ? 'default' : 'pointer' }} className="hover:brightness-110 transition-all">{saving ? t('Saving…') : t('Save Changes')}</button>
+            <button onClick={handleCancel} disabled={saving} style={{ color: C.steel, border: `1px solid ${C.steelDim}`, fontSize: 13, padding: '10px 24px' }} className="hover:text-deck transition-colors">{t('Cancel')}</button>
           </div>
         </div>
         <div style={{ border: `1px solid ${C.cyan}18`, background: C.graphite2 }} className="p-6">
-          <p style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.1em', marginBottom: 14 }}>QUALIFICATION</p>
+          <p style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.1em', marginBottom: 14 }}>{t('QUALIFICATION')}</p>
           <div className="flex items-center gap-5">
             <div style={{ background: qualTier.color, width: 44, height: 44 }} className="flex items-center justify-center">
               <span style={{ color: C.graphite, fontFamily: "'JetBrains Mono',monospace", fontSize: 14, fontWeight: 700 }}>{qualTier.abbr}</span>
             </div>
             <div>
               <p style={{ color: qualTier.color, fontWeight: 600, fontSize: 16 }}>{qualTier.name}</p>
-              <p style={{ color: C.steelDim, fontSize: 13 }}>Tier {qualTier.id} of {TIERS.length}</p>
+              <p style={{ color: C.steelDim, fontSize: 13 }}>{t('Tier {n} of {m}', { n: qualTier.id, m: TIERS.length })}</p>
             </div>
           </div>
         </div>
@@ -3415,17 +3388,18 @@ function ProfilePage({ session, profile, onProfileUpdated, profileLoading, profi
 // app_config/music_tracks/news_items RLS policies (is_admin()) refuse reads/writes
 // from anyone else regardless of what the client sends.
 function AdminPage({ session, profile }: { session: Session | null; profile: PuzzleStowProfile | null }) {
+  const { t } = useLang()
   if (!session || !profile) {
     return (
       <div style={{ background: C.graphite, minHeight: '100vh', paddingTop: '3.5rem' }} className="flex items-center justify-center">
-        <p style={{ color: C.steel, fontSize: 14 }}>Sign in required.</p>
+        <p style={{ color: C.steel, fontSize: 14 }}>{t('Sign in required.')}</p>
       </div>
     )
   }
   if (profile.role !== 'Administrator') {
     return (
       <div style={{ background: C.graphite, minHeight: '100vh', paddingTop: '3.5rem' }} className="flex items-center justify-center">
-        <p style={{ color: C.red, fontSize: 14 }}>This page is restricted to Administrators.</p>
+        <p style={{ color: C.red, fontSize: 14 }}>{t('This page is restricted to Administrators.')}</p>
       </div>
     )
   }
@@ -3433,7 +3407,7 @@ function AdminPage({ session, profile }: { session: Session | null; profile: Puz
     <div style={{ background: C.graphite, minHeight: '100vh', paddingTop: '3.5rem' }}>
       <div className="max-w-4xl mx-auto px-4 md:px-6 py-14">
         <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.14em' }} className="mb-3">ADMIN</p>
-        <h1 style={{ color: C.deck }} className="text-3xl font-bold mb-10">Site Content</h1>
+        <h1 style={{ color: C.deck }} className="text-3xl font-bold mb-10">{t('Site Content')}</h1>
         <AdminConfigSection />
         <AdminMusicSection />
         <AdminNewsSection />
@@ -3445,6 +3419,7 @@ function AdminPage({ session, profile }: { session: Session | null; profile: Puz
 interface ConfigRow { key: string; value: string | null; description: string | null }
 
 function AdminConfigSection() {
+  const { t } = useLang()
   const [rows, setRows] = useState<ConfigRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -3487,8 +3462,8 @@ function AdminConfigSection() {
   const add = async () => {
     if (adding) return
     const k = newKey.trim()
-    if (!k) { setAddError('Key is required'); return }
-    if (rows.some(r => r.key === k)) { setAddError('Key already exists'); return }
+    if (!k) { setAddError(t('Key is required')); return }
+    if (rows.some(r => r.key === k)) { setAddError(t('Key already exists')); return }
     setAdding(true)
     setAddError(null)
     const { data, error } = await supabase.from('app_config')
@@ -3504,9 +3479,9 @@ function AdminConfigSection() {
 
   return (
     <div style={{ border: `1px solid ${C.cyan}28`, background: C.graphite2 }} className="p-6 mb-6">
-      <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.1em', marginBottom: 4 }}>CONFIG VARIABLES</p>
-      <p style={{ color: C.steelDim, fontSize: 12, marginBottom: 16 }}>Free-form key/value pairs for whatever needs parking without a schema change. Not yet read by any page.</p>
-      {loading ? <p style={{ color: C.steel, fontSize: 13 }}>Loading…</p> : (
+      <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.1em', marginBottom: 4 }}>{t('CONFIG VARIABLES')}</p>
+      <p style={{ color: C.steelDim, fontSize: 12, marginBottom: 16 }}>{t('Free-form key/value pairs for whatever needs parking without a schema change. Not yet read by any page.')}</p>
+      {loading ? <p style={{ color: C.steel, fontSize: 13 }}>{t('Loading…')}</p> : (
         <div className="flex flex-col gap-3 mb-4">
           {rows.map(row => (
             <div key={row.key} className="grid grid-cols-12 gap-2 items-start" style={{ borderBottom: `1px solid ${C.steelDim}20`, paddingBottom: 10 }}>
@@ -3514,20 +3489,20 @@ function AdminConfigSection() {
               <input className="col-span-4" style={inp} value={row.value ?? ''} onChange={e => updateRow(row.key, { value: e.target.value })} placeholder="value" />
               <input className="col-span-3" style={inp} value={row.description ?? ''} onChange={e => updateRow(row.key, { description: e.target.value })} placeholder="description" />
               <div className="col-span-2 flex gap-2">
-                <button onClick={() => save(row.key)} disabled={savingKey === row.key} style={{ color: C.cyan, fontSize: 12, border: `1px solid ${C.cyan}50`, padding: '6px 10px', background: `${C.cyan}10`, cursor: 'pointer' }}>{savingKey === row.key ? '…' : 'Save'}</button>
-                <button onClick={() => remove(row.key)} style={{ color: C.red, fontSize: 12, border: `1px solid ${C.red}50`, padding: '6px 10px', background: 'transparent', cursor: 'pointer' }}>Delete</button>
+                <button onClick={() => save(row.key)} disabled={savingKey === row.key} style={{ color: C.cyan, fontSize: 12, border: `1px solid ${C.cyan}50`, padding: '6px 10px', background: `${C.cyan}10`, cursor: 'pointer' }}>{savingKey === row.key ? '…' : t('Save')}</button>
+                <button onClick={() => remove(row.key)} style={{ color: C.red, fontSize: 12, border: `1px solid ${C.red}50`, padding: '6px 10px', background: 'transparent', cursor: 'pointer' }}>{t('Delete')}</button>
               </div>
             </div>
           ))}
-          {rows.length === 0 && <p style={{ color: C.steelDim, fontSize: 13 }}>No config variables yet.</p>}
+          {rows.length === 0 && <p style={{ color: C.steelDim, fontSize: 13 }}>{t('No config variables yet.')}</p>}
         </div>
       )}
       {error && <p style={{ color: C.red, fontSize: 12, marginBottom: 10 }}>{error}</p>}
       <div className="grid grid-cols-12 gap-2 items-start" style={{ borderTop: `1px solid ${C.steelDim}30`, paddingTop: 14 }}>
-        <input className="col-span-3" style={inp} value={newKey} onChange={e => setNewKey(e.target.value)} placeholder="key" />
-        <input className="col-span-4" style={inp} value={newValue} onChange={e => setNewValue(e.target.value)} placeholder="value" />
-        <input className="col-span-3" style={inp} value={newDesc} onChange={e => setNewDesc(e.target.value)} placeholder="description" />
-        <button onClick={add} disabled={adding} className="col-span-2" style={{ color: C.graphite, background: C.cyan, fontSize: 12, fontWeight: 600, padding: '7px 10px', border: 'none', cursor: adding ? 'default' : 'pointer', opacity: adding ? 0.6 : 1 }}>{adding ? '…' : 'Add'}</button>
+        <input className="col-span-3" style={inp} value={newKey} onChange={e => setNewKey(e.target.value)} placeholder={t('key')} />
+        <input className="col-span-4" style={inp} value={newValue} onChange={e => setNewValue(e.target.value)} placeholder={t('value')} />
+        <input className="col-span-3" style={inp} value={newDesc} onChange={e => setNewDesc(e.target.value)} placeholder={t('description')} />
+        <button onClick={add} disabled={adding} className="col-span-2" style={{ color: C.graphite, background: C.cyan, fontSize: 12, fontWeight: 600, padding: '7px 10px', border: 'none', cursor: adding ? 'default' : 'pointer', opacity: adding ? 0.6 : 1 }}>{adding ? '…' : t('Add')}</button>
       </div>
       {addError && <p style={{ color: C.red, fontSize: 12, marginTop: 8 }}>{addError}</p>}
     </div>
@@ -3537,6 +3512,7 @@ function AdminConfigSection() {
 interface MusicTrackRow { id: string; title: string; url: string | null; page: string | null; is_current: boolean; sort_order: number }
 
 function AdminMusicSection() {
+  const { t } = useLang()
   const [rows, setRows] = useState<MusicTrackRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -3578,7 +3554,7 @@ function AdminMusicSection() {
 
   const add = async () => {
     if (adding) return
-    if (!newTitle.trim()) { setAddError('Title is required'); return }
+    if (!newTitle.trim()) { setAddError(t('Title is required')); return }
     setAdding(true)
     setAddError(null)
     const { data, error } = await supabase.from('music_tracks')
@@ -3599,9 +3575,9 @@ function AdminMusicSection() {
 
   return (
     <div style={{ border: `1px solid ${C.cyan}28`, background: C.graphite2 }} className="p-6 mb-6">
-      <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.1em', marginBottom: 4 }}>MUSIC TRACKS</p>
-      <p style={{ color: C.steelDim, fontSize: 12, marginBottom: 16 }}>Which track is assigned to which page, and which one is current. Not yet wired to a real player.</p>
-      {loading ? <p style={{ color: C.steel, fontSize: 13 }}>Loading…</p> : (
+      <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.1em', marginBottom: 4 }}>{t('MUSIC TRACKS')}</p>
+      <p style={{ color: C.steelDim, fontSize: 12, marginBottom: 16 }}>{t('Which track is assigned to which page, and which one is current. Not yet wired to a real player.')}</p>
+      {loading ? <p style={{ color: C.steel, fontSize: 13 }}>{t('Loading…')}</p> : (
         <div className="flex flex-col gap-3 mb-4">
           {rows.map(row => (
             <div key={row.id} className="grid grid-cols-12 gap-2 items-center" style={{ borderBottom: `1px solid ${C.steelDim}20`, paddingBottom: 10 }}>
@@ -3610,20 +3586,20 @@ function AdminMusicSection() {
               <input className="col-span-2" style={inp} value={row.page ?? ''} onChange={e => updateRow(row.id, { page: e.target.value })} placeholder="page" />
               <div className="col-span-1 flex justify-center"><Toggle on={row.is_current} onClick={() => updateRow(row.id, { is_current: !row.is_current })} /></div>
               <div className="col-span-2 flex gap-2 justify-end">
-                <button onClick={() => save(row.id)} disabled={savingId === row.id} style={{ color: C.cyan, fontSize: 12, border: `1px solid ${C.cyan}50`, padding: '6px 10px', background: `${C.cyan}10`, cursor: 'pointer' }}>{savingId === row.id ? '…' : 'Save'}</button>
-                <button onClick={() => remove(row.id)} style={{ color: C.red, fontSize: 12, border: `1px solid ${C.red}50`, padding: '6px 10px', background: 'transparent', cursor: 'pointer' }}>Delete</button>
+                <button onClick={() => save(row.id)} disabled={savingId === row.id} style={{ color: C.cyan, fontSize: 12, border: `1px solid ${C.cyan}50`, padding: '6px 10px', background: `${C.cyan}10`, cursor: 'pointer' }}>{savingId === row.id ? '…' : t('Save')}</button>
+                <button onClick={() => remove(row.id)} style={{ color: C.red, fontSize: 12, border: `1px solid ${C.red}50`, padding: '6px 10px', background: 'transparent', cursor: 'pointer' }}>{t('Delete')}</button>
               </div>
             </div>
           ))}
-          {rows.length === 0 && <p style={{ color: C.steelDim, fontSize: 13 }}>No tracks yet.</p>}
+          {rows.length === 0 && <p style={{ color: C.steelDim, fontSize: 13 }}>{t('No tracks yet.')}</p>}
         </div>
       )}
       {error && <p style={{ color: C.red, fontSize: 12, marginBottom: 10 }}>{error}</p>}
       <div className="grid grid-cols-12 gap-2 items-center" style={{ borderTop: `1px solid ${C.steelDim}30`, paddingTop: 14 }}>
-        <input className="col-span-3" style={inp} value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="title" />
-        <input className="col-span-4" style={inp} value={newUrl} onChange={e => setNewUrl(e.target.value)} placeholder="audio URL" />
-        <input className="col-span-2" style={inp} value={newPage} onChange={e => setNewPage(e.target.value)} placeholder="page (optional)" />
-        <button onClick={add} disabled={adding} className="col-span-3" style={{ color: C.graphite, background: C.cyan, fontSize: 12, fontWeight: 600, padding: '7px 10px', border: 'none', cursor: adding ? 'default' : 'pointer', opacity: adding ? 0.6 : 1 }}>{adding ? '…' : 'Add track'}</button>
+        <input className="col-span-3" style={inp} value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder={t('title')} />
+        <input className="col-span-4" style={inp} value={newUrl} onChange={e => setNewUrl(e.target.value)} placeholder={t('audio URL')} />
+        <input className="col-span-2" style={inp} value={newPage} onChange={e => setNewPage(e.target.value)} placeholder={t('page (optional)')} />
+        <button onClick={add} disabled={adding} className="col-span-3" style={{ color: C.graphite, background: C.cyan, fontSize: 12, fontWeight: 600, padding: '7px 10px', border: 'none', cursor: adding ? 'default' : 'pointer', opacity: adding ? 0.6 : 1 }}>{adding ? '…' : t('Add track')}</button>
       </div>
       {addError && <p style={{ color: C.red, fontSize: 12, marginTop: 8 }}>{addError}</p>}
     </div>
@@ -3633,6 +3609,7 @@ function AdminMusicSection() {
 interface NewsItemRow { id: string; message: string; is_active: boolean; sort_order: number }
 
 function AdminNewsSection() {
+  const { t } = useLang()
   const [rows, setRows] = useState<NewsItemRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -3672,7 +3649,7 @@ function AdminNewsSection() {
 
   const add = async () => {
     if (adding) return
-    if (!newMessage.trim()) { setAddError('Message is required'); return }
+    if (!newMessage.trim()) { setAddError(t('Message is required')); return }
     setAdding(true)
     setAddError(null)
     const { data, error } = await supabase.from('news_items')
@@ -3688,9 +3665,9 @@ function AdminNewsSection() {
 
   return (
     <div style={{ border: `1px solid ${C.cyan}28`, background: C.graphite2 }} className="p-6">
-      <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.1em', marginBottom: 4 }}>NEWS LINE</p>
-      <p style={{ color: C.steelDim, fontSize: 12, marginBottom: 16 }}>Items for the news-line ticker. Not yet displayed on any public page.</p>
-      {loading ? <p style={{ color: C.steel, fontSize: 13 }}>Loading…</p> : (
+      <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.1em', marginBottom: 4 }}>{t('NEWS LINE')}</p>
+      <p style={{ color: C.steelDim, fontSize: 12, marginBottom: 16 }}>{t('Items for the news-line ticker. Not yet displayed on any public page.')}</p>
+      {loading ? <p style={{ color: C.steel, fontSize: 13 }}>{t('Loading…')}</p> : (
         <div className="flex flex-col gap-3 mb-4">
           {rows.map(row => (
             <div key={row.id} className="grid grid-cols-12 gap-2 items-center" style={{ borderBottom: `1px solid ${C.steelDim}20`, paddingBottom: 10 }}>
@@ -3702,18 +3679,18 @@ function AdminNewsSection() {
                 </div>
               </div>
               <div className="col-span-3 flex gap-2 justify-end">
-                <button onClick={() => save(row.id)} disabled={savingId === row.id} style={{ color: C.cyan, fontSize: 12, border: `1px solid ${C.cyan}50`, padding: '6px 10px', background: `${C.cyan}10`, cursor: 'pointer' }}>{savingId === row.id ? '…' : 'Save'}</button>
-                <button onClick={() => remove(row.id)} style={{ color: C.red, fontSize: 12, border: `1px solid ${C.red}50`, padding: '6px 10px', background: 'transparent', cursor: 'pointer' }}>Delete</button>
+                <button onClick={() => save(row.id)} disabled={savingId === row.id} style={{ color: C.cyan, fontSize: 12, border: `1px solid ${C.cyan}50`, padding: '6px 10px', background: `${C.cyan}10`, cursor: 'pointer' }}>{savingId === row.id ? '…' : t('Save')}</button>
+                <button onClick={() => remove(row.id)} style={{ color: C.red, fontSize: 12, border: `1px solid ${C.red}50`, padding: '6px 10px', background: 'transparent', cursor: 'pointer' }}>{t('Delete')}</button>
               </div>
             </div>
           ))}
-          {rows.length === 0 && <p style={{ color: C.steelDim, fontSize: 13 }}>No news items yet.</p>}
+          {rows.length === 0 && <p style={{ color: C.steelDim, fontSize: 13 }}>{t('No news items yet.')}</p>}
         </div>
       )}
       {error && <p style={{ color: C.red, fontSize: 12, marginBottom: 10 }}>{error}</p>}
       <div className="flex gap-2" style={{ borderTop: `1px solid ${C.steelDim}30`, paddingTop: 14 }}>
-        <input style={{ ...inp, flex: 1 }} value={newMessage} onChange={e => setNewMessage(e.target.value)} placeholder="new news item message" />
-        <button onClick={add} disabled={adding} style={{ color: C.graphite, background: C.cyan, fontSize: 12, fontWeight: 600, padding: '7px 16px', border: 'none', cursor: adding ? 'default' : 'pointer', opacity: adding ? 0.6 : 1 }}>{adding ? '…' : 'Add'}</button>
+        <input style={{ ...inp, flex: 1 }} value={newMessage} onChange={e => setNewMessage(e.target.value)} placeholder={t('new news item message')} />
+        <button onClick={add} disabled={adding} style={{ color: C.graphite, background: C.cyan, fontSize: 12, fontWeight: 600, padding: '7px 16px', border: 'none', cursor: adding ? 'default' : 'pointer', opacity: adding ? 0.6 : 1 }}>{adding ? '…' : t('Add')}</button>
       </div>
       {addError && <p style={{ color: C.red, fontSize: 12, marginTop: 8 }}>{addError}</p>}
     </div>
@@ -4543,8 +4520,52 @@ function DevTestPage() {
   )
 }
 
+// ── Language gate (TO_DO 28) ────────────────────────────────────────────────
+// One-time question, raised by I18nProvider after IP country detection: the modal
+// renders in the SUGGESTED language so the visitor reads exactly what they're offered.
+const GEO_PROMPT_KEY: Record<Lang, string> = {
+  EN: "Detected region: international. Switch viewing language to English?",
+  RU: "Detected region: Russia. Switch viewing language to Russian?",
+  BE: "Detected region: Belarus. Switch viewing language to Belarusian?",
+}
+
+function LanguageGateModal({ suggestion }: { suggestion: GeoSuggestion }) {
+  const { acceptGeoSuggestion, dismissGeoSuggestion } = useLang()
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: `${C.graphite}cc`, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div style={{ background: C.graphite2, border: `1px solid ${C.cyan}40`, padding: '28px 32px', maxWidth: 420, textAlign: 'center', boxShadow: `0 8px 32px ${C.graphite}c0` }}>
+        <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 10, letterSpacing: '0.14em', marginBottom: 12 }}>{useLang().t('Language')}</p>
+        <p style={{ color: C.deck, fontSize: 15, lineHeight: 1.6, marginBottom: 20 }}>
+          {useLang().t(GEO_PROMPT_KEY[suggestion.suggested])}
+        </p>
+        <div className="flex gap-3 justify-center">
+          <button onClick={acceptGeoSuggestion}
+            style={{ background: C.cyan, color: C.graphite, fontWeight: 600, fontSize: 13, padding: '10px 20px', border: 'none', cursor: 'pointer' }}>
+            {useLang().t('Yes, switch')}
+          </button>
+          <button onClick={dismissGeoSuggestion}
+            style={{ color: C.steel, border: `1px solid ${C.steelDim}60`, background: 'transparent', fontSize: 13, padding: '10px 20px', cursor: 'pointer' }}>
+            {useLang().t('Keep current language')}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── App ───────────────────────────────────────────────────────────────────────
 export default function App() {
+  return (
+    <I18nProvider>
+      <AppShell />
+    </I18nProvider>
+  )
+}
+
+// AppShell — the former App() body, now under I18nProvider so every page can call
+// useLang() (TO_DO 28). Page switching, Supabase session/profile handling unchanged.
+function AppShell() {
+  const { lang, t, geoSuggestion } = useLang()
   const [page, setPage] = useState<Page>(() => (getAuthRedirectType() === 'recovery' ? 'auth' : 'home'))
   // Captured once, like `page` above -- getAuthRedirectType() reads the URL hash live,
   // and Supabase's own client clears that hash once it finishes parsing the recovery
@@ -4563,8 +4584,8 @@ export default function App() {
   // instead (see `page` initializer + `recoveryMode` below), not a banner.
   const [authNotice, setAuthNotice] = useState<string | null>(() => {
     const type = getAuthRedirectType()
-    if (type === 'signup') return 'Email confirmed — you are now signed in.'
-    if (type === 'email_change') return 'Email address confirmed.'
+    if (type === 'signup') return authNoticeText('signup', lang)
+    if (type === 'email_change') return authNoticeText('email_change', lang)
     return null
   })
 
@@ -4646,18 +4667,25 @@ export default function App() {
       {page === 'play'      && <PlayPage mode="rated" />}
       {page === 'practice'  && (isLoggedIn
         ? <PracticePage />
-        : <GatedPreview title="Sign in to play Practice" blurb="Practice runs against the built-in algorithmic engine — unrated, for training. Sign in to unlock it."
-            features={['An unrated match against the algorithmic engine, at your chosen difficulty', 'The same rules and validation as a real match, with nothing at stake', 'A live log of every move, with PDF export when the match ends']}
+        : <GatedPreview title={t('Sign in to play Practice')} blurb={t('Practice runs against the built-in algorithmic engine — unrated, for training. Sign in to unlock it.')}
+            features={[t('An unrated match against the algorithmic engine, at your chosen difficulty'), t('The same rules and validation as a real match, with nothing at stake'), t('A live log of every move, with PDF export when the match ends')]}
             setPage={setPage}><PracticePage /></GatedPreview>)}
       {page === 'sandbox'   && (isLoggedIn
         ? <SandboxPage setPage={setPage} />
-        : <GatedPreview title="Sign in to use the Sandbox" blurb="Free placement, rule highlights, and a step-by-step tutorial — sign in to start experimenting."
-            features={['A 4-step guided tutorial: your first placement, notation, and the step-height rule explained live', 'Free placement of all 27 figures afterward, with no limits or scoring', 'Toggleable highlights for every placement rule (support, steps, overhang, return path)']}
+        : <GatedPreview title={t('Sign in to use the Sandbox')} blurb={t('Free placement, rule highlights, and a step-by-step tutorial — sign in to start experimenting.')}
+            features={[t('A 4-step guided tutorial: your first placement, notation, and the step-height rule explained live'), t('Free placement of all 27 figures afterward, with no limits or scoring'), t('Toggleable highlights for every placement rule (support, steps, overhang, return path)')]}
             setPage={setPage}><SandboxPreview /></GatedPreview>)}
       {page === 'printplay' && <PrintPlayPage />}
       {page === 'profile'   && <ProfilePage session={session} profile={profile} onProfileUpdated={setProfile} profileLoading={profileLoading} profileError={profileError} onRetryProfile={() => setProfileRefreshKey(k => k + 1)} />}
       {page === 'devtest'   && <DevTestPage />}
       {page === 'admin'     && <AdminPage session={session} profile={profile} />}
+      {geoSuggestion && <LanguageGateModal suggestion={geoSuggestion} />}
     </div>
   )
+}
+
+/** Localized text for the one-time Supabase email-confirmation banner (AppShell). */
+function authNoticeText(kind: 'signup' | 'email_change', lang: Lang): string {
+  if (kind === 'signup') return translate(lang, "Email confirmed — you are now signed in.")
+  return translate(lang, "Email address confirmed.")
 }
