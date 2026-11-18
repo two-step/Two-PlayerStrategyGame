@@ -21,8 +21,8 @@
 | Документы, спецификации, TO_DO | `D:\4work\puzzlestow\artifacts` |
 | `TO_DO.docx` | там же; красный шрифт = DONE; **номера пунктов сверять только по файлу** |
 | Геометрия фигур | `otgruzka_figures.json` — **единственный источник**: 27 фигур, `cells`/`bbox` локальны `[row, col]` от угла фигуры, не абсолютны в контейнере |
-| Канон правил | TO_DO 44a–h + `PUZZLESTOW_STATE_2026-11-17.md` (в artifacts) — живой документ |
-| Память проекта (md, для точечной работы агентов) | `D:\4work\puzzlestow\artifacts\Memory` — индекс `MEMORY.md`; читать нужный файл, не всё подряд |
+| Канон правил | TO_DO 44a–h + `docs/PUZZLESTOW_STATE_2026-11-17.md` **в репо** (авторская копия — в artifacts) — живой документ; ссылаться на копию в репо |
+| Память проекта (md, для точечной работы агентов) | индекс `docs/memory/MEMORY.md` **в репо** (синхронизированные копии — `D:\4work\puzzlestow\artifacts\Memory`); читать нужный файл, не всё подряд; ссылаться на копию в репо |
 
 **Палитра (кано́н, код — источник истины, не DS v1.2):** graphite `#1C1F26` / graphite-2 `#22262F` / graphite-3 `#2A2F3A` · stow-blue `#1F4F82` · lodar-cyan `#1FA7A3` · green-stow `#3BB273` · fairplay `#D6456F` · steel `#A3A9B5` (steel-dim `#4B5162`, `#6B7280`) · light-deck `#F5F7FA`. **Оранжевого нет нигде и быть не может.** Типографика: Inter; JetBrains Mono — нотация ходов и координаты.
 
