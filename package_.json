@@ -6,7 +6,7 @@
    "main" : "server.js",
    "name" : "puzzlestow.com",
    "scripts" : {
-      "ispmanager-custom-command" : "figma-make-app@1.0.0 dev",
+      "ispmanager-custom-command" : "puzzlestow@1.0.0 dev",
       "start" : "node server.js"
    },
    "type" : "commonjs",

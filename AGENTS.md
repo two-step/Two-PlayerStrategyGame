@@ -47,7 +47,7 @@
 - **PDF:** `jspdf` + `jspdf-autotable` (Print&Play, игровой отчёт).
 - **Форматирование:** `oxfmt` (`npm run format`). **Тест-раннера и линтера пока нет** — настройка vitest/eslint это предпосылка пунктов 45/46f, не довесок.
 - Node 22 + pnpm 10.34.3 (`.mise.toml`). Скрипты: `dev` (`--host 0.0.0.0`, порт по умолчанию 8443), `build`, `preview`, `format`. Псевдоним `@` → `./src`.
-- **Figma Make всё ещё вшит в сборку** (`vite.config.ts` → `.figma/make/site.json`, слоты `<!-- figma:* -->` в `index.html`). Пункт 27 — не только переименование `package.json`/`AGENTS.md`, но и выпиливание этой обвязки.
+- **Figma Make выпилен из сборки** (пункт 27 закрыт): `package.json` = `puzzlestow`, `vite.config.ts` содержит только `react()` + `tailwindcss()`, слоты `<!-- figma:* -->` в `index.html` заменены на честные значения, каталог `.figma/` удалён.
 - Структура: `src/App.tsx` (все страницы, ~4.5 тыс. строк — техдолг), `src/engine/rules.ts` (клиентская аппроксимация для дев-харнесса, **не серверный движок**), `src/engine/opponentEngine.ts` (Easy/Medium/Hard), `src/lib/supabaseClient.ts`, `src/main.tsx`, `src/index.css`.
 
 ## 4. Принципы
