@@ -7,6 +7,13 @@ import type { Session } from '@supabase/supabase-js'
 import { supabase, type PuzzleStowProfile, resizeAvatarFile, blobToByteaHex, byteaHexToObjectUrl } from './lib/supabaseClient'
 import { I18nProvider, useLang, type GeoSuggestion } from './lib/I18nContext'
 import { LANGS, RULE_OVERVIEW_PANELS, translate, translateEngineText, type Lang } from './lib/i18n'
+import {
+  readStoredMusicOn,
+  resolveMusicSrc,
+  storeMusicOn,
+  useSiteMusic,
+} from './lib/useSiteMusic'
+import { useActiveNews, useMusicOverrides } from './lib/siteContent'
 
 // Supabase's auth emails (confirm signup / password recovery / email change) redirect
 // back to this app with a `type` param in the URL hash (implicit flow) or query string
@@ -663,12 +670,48 @@ function buildHeroCells() {
 const HERO_CELLS = buildHeroCells()
 const HERO_CLOSED = new Set([10])
 
+// ── News ticker (TO_DO 29) ─────────────────────────────────────────────────
+/** Height of the fixed news bar; AppShell pads the page by this when it shows. */
+const TICKER_HEIGHT = 28
+
+/** NewsTicker — fixed bar under the nav, marquee of admin-entered news_items.
+ *  Renders nothing when there are no active items (no stubs in MVP).
+ *  Precondition: `items` comes from useActiveNews (public SELECT, is_active).
+ *  Postcondition: nothing; purely presentational, all failures are upstream.
+ *  Invariant: content is duplicated inside the track so the CSS loop is
+ *  seamless; text is rendered as React children (never dangerouslySetInnerHTML).
+ */
+function NewsTicker({ items }: { items: { id: string; message: string }[] }) {
+  const { t } = useLang()
+  if (items.length === 0) return null
+  const content = items.map(i => i.message.trim()).filter(Boolean).join('   ◆   ')
+  // Speed follows content length so the loop reads at a constant pace.
+  const durationSec = Math.max(30, Math.round(content.length * 0.14))
+  const style: React.CSSProperties = {
+    position: 'fixed', top: 56, left: 0, right: 0, height: TICKER_HEIGHT,
+    background: C.graphite2, borderBottom: `1px solid ${C.cyan}22`, zIndex: 40,
+    overflow: 'hidden', display: 'flex', alignItems: 'center',
+  }
+  return (
+    <div className="ps-ticker" style={style} aria-label={t('News')}>
+      <div className="ps-ticker-track" style={{ '--ps-ticker-duration': `${durationSec}s` } as React.CSSProperties}>
+        <span style={tickerTextStyle}>{content}   ◆   </span>
+        <span style={tickerTextStyle} aria-hidden="true">{content}   ◆   </span>
+      </div>
+    </div>
+  )
+}
+const tickerTextStyle: React.CSSProperties = {
+  color: C.steel, fontFamily: "'JetBrains Mono', monospace", fontSize: 11,
+  letterSpacing: '0.04em', whiteSpace: 'pre', flexShrink: 0,
+}
+
 // ── Nav ───────────────────────────────────────────────────────────────────────
-function Nav({ page, setPage, isLoggedIn, isAdmin, onSignOut }: {
+function Nav({ page, setPage, isLoggedIn, isAdmin, onSignOut, musicOn, onToggleMusic }: {
   page: Page; setPage: (p: Page) => void; isLoggedIn: boolean; isAdmin?: boolean; onSignOut: () => void
+  musicOn: boolean; onToggleMusic: () => void
 }) {
   const [open, setOpen] = useState(false)
-  const [musicOn, setMusicOn] = useState(false)
   const { lang, setLang, t } = useLang()
 
   const links: { label: string; p: Page }[] = [
@@ -709,7 +752,7 @@ function Nav({ page, setPage, isLoggedIn, isAdmin, onSignOut }: {
               </button>
             ))}
           </div>
-          <button onClick={() => setMusicOn(!musicOn)} title={musicOn ? t('Music on (visual)') : t('Music off')}
+          <button onClick={onToggleMusic} title={musicOn ? t('Music on') : t('Music off')}
             style={{ color: musicOn ? C.cyan : C.steelDim, transition: 'color 0.2s' }}
             className={musicOn ? 'animate-pulse' : ''}>
             <MusicIcon />
@@ -747,7 +790,7 @@ function Nav({ page, setPage, isLoggedIn, isAdmin, onSignOut }: {
 
         {/* Mobile right */}
         <div className="flex md:hidden items-center gap-2">
-          <button onClick={() => setMusicOn(!musicOn)} style={{ color: musicOn ? C.cyan : C.steelDim }}
+          <button onClick={onToggleMusic} style={{ color: musicOn ? C.cyan : C.steelDim }}
             className={musicOn ? 'animate-pulse' : ''}><MusicIcon /></button>
           <button onClick={() => setOpen(!open)} style={{ color: C.steel }}>
             <svg width={22} height={22} fill="none" stroke="currentColor" strokeWidth={1.5}>
@@ -3398,12 +3441,13 @@ function ProfilePage({ session, profile, onProfileUpdated, profileLoading, profi
 }
 
 // ── Admin Page — flexible/auxiliary site content, Administrator role only ─────
-// Config variables, music tracks, and news-line items are admin-entered data only at
-// this stage -- nothing here wires the music player or a public news ticker yet (both
-// still deferred per PuzzleStow_Site_Fix_Request_v3.md BACKLOG). Access is enforced
-// twice: this component hides the page from non-Administrators, and the
-// app_config/music_tracks/news_items RLS policies (is_admin()) refuse reads/writes
-// from anyone else regardless of what the client sends.
+// Env variables, music tracks, and news-line items are admin-entered data and
+// all three are consumed live (TO_DO 29): the public player resolves per-page
+// tracks from music_tracks, the news ticker renders news_items under the nav.
+// Access is enforced twice: this component hides the page from non-Administrators,
+// and the app_config/music_tracks/news_items write RLS policies (is_admin())
+// refuse writes from anyone else regardless of what the client sends (public
+// SELECT was opened by migration 20261119120000 so visitors can read music/news).
 function AdminPage({ session, profile }: { session: Session | null; profile: PuzzleStowProfile | null }) {
   const { t } = useLang()
   if (!session || !profile) {
@@ -3425,6 +3469,7 @@ function AdminPage({ session, profile }: { session: Session | null; profile: Puz
       <div className="max-w-4xl mx-auto px-4 md:px-6 py-14">
         <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.14em' }} className="mb-3">ADMIN</p>
         <h1 style={{ color: C.deck }} className="text-3xl font-bold mb-10">{t('Site Content')}</h1>
+        <AdminEnvSection />
         <AdminConfigSection />
         <AdminMusicSection />
         <AdminNewsSection />
@@ -3497,7 +3542,7 @@ function AdminConfigSection() {
   return (
     <div style={{ border: `1px solid ${C.cyan}28`, background: C.graphite2 }} className="p-6 mb-6">
       <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.1em', marginBottom: 4 }}>{t('CONFIG VARIABLES')}</p>
-      <p style={{ color: C.steelDim, fontSize: 12, marginBottom: 16 }}>{t('Free-form key/value pairs for whatever needs parking without a schema change. Not yet read by any page.')}</p>
+      <p style={{ color: C.steelDim, fontSize: 12, marginBottom: 16 }}>{t('Free-form key/value pairs for whatever needs parking without a schema change.')}</p>
       {loading ? <p style={{ color: C.steel, fontSize: 13 }}>{t('Loading…')}</p> : (
         <div className="flex flex-col gap-3 mb-4">
           {rows.map(row => (
@@ -3526,17 +3571,36 @@ function AdminConfigSection() {
   )
 }
 
+// AdminMusicSection — TO_DO item 29: real assignment of music tracks to pages.
+//
+// Data model (music_tracks table, one row per track):
+// - page = null        → the track sits in the library, available for assignment.
+// - page = 'X'         → the track is assigned to page 'X' ('default' = the
+//                        site-wide fallback theme).
+// - is_current = true  → the assignment is active; the public player resolves
+//                        exactly one track per page (see resolveMusicSrc).
+// Assignment happens in a popup per page; the bundled PuzzleStow.mp3 remains
+// the built-in fallback when a page has no assigned track.
+
 interface MusicTrackRow { id: string; title: string; url: string | null; page: string | null; is_current: boolean; sort_order: number }
+
+/** The admin "pages" for music assignment: the site-wide default plus every app page. */
+const MUSIC_ASSIGN_PAGES = [
+  'default', 'home', 'figures', 'rules', 'lore', 'play', 'practice',
+  'sandbox', 'printplay', 'profile', 'devtest',
+] as const
+
+/** The bundled fallback track for pages without an assignment. */
+const BUNDLED_TRACK_CHOICE = 'bundled'
 
 function AdminMusicSection() {
   const { t } = useLang()
   const [rows, setRows] = useState<MusicTrackRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [savingId, setSavingId] = useState<string | null>(null)
+  const [editingPage, setEditingPage] = useState<string | null>(null)
   const [newTitle, setNewTitle] = useState('')
   const [newUrl, setNewUrl] = useState('')
-  const [newPage, setNewPage] = useState('')
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
 
@@ -3550,17 +3614,32 @@ function AdminMusicSection() {
     })
   }, [])
 
-  const updateRow = (id: string, patch: Partial<MusicTrackRow>) => setRows(rs => rs.map(r => (r.id === id ? { ...r, ...patch } : r)))
+  const assignmentFor = (page: string): MusicTrackRow | undefined =>
+    rows.find(r => r.page === page && r.is_current)
 
-  const save = async (id: string) => {
-    const row = rows.find(r => r.id === id)
-    if (!row) return
-    setSavingId(id)
-    const { error } = await supabase.from('music_tracks')
-      .update({ title: row.title, url: row.url, page: row.page || null, is_current: row.is_current, sort_order: row.sort_order, updated_at: new Date().toISOString() })
-      .eq('id', id)
-    setSavingId(null)
-    if (error) setError(error.message)
+  /** Apply the admin's choice for `page`: assign `trackId`, or clear to bundled. */
+  const applyAssignment = async (page: string, trackId: string): Promise<string | null> => {
+    const cleared = rows.filter(r => r.page === page && r.id !== trackId)
+    for (const r of cleared) {
+      const { error: e } = await supabase.from('music_tracks')
+        .update({ page: null, is_current: false, updated_at: new Date().toISOString() }).eq('id', r.id)
+      if (e) return e.message
+    }
+    if (trackId === BUNDLED_TRACK_CHOICE) return null
+    const { error: e } = await supabase.from('music_tracks')
+      .update({ page, is_current: true, updated_at: new Date().toISOString() }).eq('id', trackId)
+    return e ? e.message : null
+  }
+
+  const commitAssignment = async (page: string, trackId: string) => {
+    const err = await applyAssignment(page, trackId)
+    if (err) { setError(err); return }
+    setRows(rs => rs.map(r => {
+      if (r.page === page && r.id !== trackId) return { ...r, page: null, is_current: false }
+      if (r.id === trackId && trackId !== BUNDLED_TRACK_CHOICE) return { ...r, page, is_current: true }
+      return r
+    }))
+    setEditingPage(null)
   }
 
   const remove = async (id: string) => {
@@ -3575,50 +3654,151 @@ function AdminMusicSection() {
     setAdding(true)
     setAddError(null)
     const { data, error } = await supabase.from('music_tracks')
-      .insert({ title: newTitle.trim(), url: newUrl.trim() || null, page: newPage.trim() || null, sort_order: rows.length })
+      .insert({ title: newTitle.trim(), url: newUrl.trim() || null, sort_order: rows.length })
       .select('id, title, url, page, is_current, sort_order').single()
     setAdding(false)
     if (error) { setAddError(error.message); return }
     setRows(rs => [...rs, data as MusicTrackRow])
-    setNewTitle(''); setNewUrl(''); setNewPage('')
+    setNewTitle(''); setNewUrl('')
   }
 
   const inp: React.CSSProperties = { background: C.graphite, border: `1px solid ${C.steelDim}`, color: C.deck, fontSize: 13, padding: '7px 10px', width: '100%', outline: 'none', fontFamily: 'inherit' }
-  const Toggle = ({ on, onClick }: { on: boolean; onClick: () => void }) => (
-    <div onClick={onClick} style={{ width: 18, height: 18, border: `1.5px solid ${on ? C.cyan : C.steelDim}`, background: on ? C.cyan : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-      {on && <svg width={10} height={10} viewBox="0 0 10 10" fill="none" stroke={C.graphite} strokeWidth={2}><polyline points="1.5,5 4,7.5 8.5,2.5" /></svg>}
-    </div>
-  )
 
   return (
     <div style={{ border: `1px solid ${C.cyan}28`, background: C.graphite2 }} className="p-6 mb-6">
       <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.1em', marginBottom: 4 }}>{t('MUSIC TRACKS')}</p>
-      <p style={{ color: C.steelDim, fontSize: 12, marginBottom: 16 }}>{t('Which track is assigned to which page, and which one is current. Not yet wired to a real player.')}</p>
+      <p style={{ color: C.steelDim, fontSize: 12, marginBottom: 16 }}>{t('Click a page to pick its track in a popup. Pages without a choice play the bundled PuzzleStow theme. Read live by the public player.')}</p>
       {loading ? <p style={{ color: C.steel, fontSize: 13 }}>{t('Loading…')}</p> : (
-        <div className="flex flex-col gap-3 mb-4">
-          {rows.map(row => (
-            <div key={row.id} className="grid grid-cols-12 gap-2 items-center" style={{ borderBottom: `1px solid ${C.steelDim}20`, paddingBottom: 10 }}>
-              <input className="col-span-3" style={inp} value={row.title} onChange={e => updateRow(row.id, { title: e.target.value })} placeholder="title" />
-              <input className="col-span-4" style={inp} value={row.url ?? ''} onChange={e => updateRow(row.id, { url: e.target.value })} placeholder="audio URL" />
-              <input className="col-span-2" style={inp} value={row.page ?? ''} onChange={e => updateRow(row.id, { page: e.target.value })} placeholder="page" />
-              <div className="col-span-1 flex justify-center"><Toggle on={row.is_current} onClick={() => updateRow(row.id, { is_current: !row.is_current })} /></div>
-              <div className="col-span-2 flex gap-2 justify-end">
-                <button onClick={() => save(row.id)} disabled={savingId === row.id} style={{ color: C.cyan, fontSize: 12, border: `1px solid ${C.cyan}50`, padding: '6px 10px', background: `${C.cyan}10`, cursor: 'pointer' }}>{savingId === row.id ? '…' : t('Save')}</button>
-                <button onClick={() => remove(row.id)} style={{ color: C.red, fontSize: 12, border: `1px solid ${C.red}50`, padding: '6px 10px', background: 'transparent', cursor: 'pointer' }}>{t('Delete')}</button>
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-6">
+            {MUSIC_ASSIGN_PAGES.map(p => {
+              const cur = assignmentFor(p)
+              return (
+                <button key={p} onClick={() => setEditingPage(p)}
+                  style={{ border: `1px solid ${cur ? C.cyan : C.steelDim}50`, background: cur ? `${C.cyan}10` : 'transparent', textAlign: 'left', padding: '8px 10px' }}>
+                  <span style={{ display: 'block', color: cur ? C.cyan : C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.06em' }}>{p.toUpperCase()}</span>
+                  <span style={{ display: 'block', color: C.deck, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {cur ? cur.title : t('PuzzleStow (bundled)')}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+          <p style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.1em', marginBottom: 10 }}>{t('TRACK LIBRARY')}</p>
+          <div className="flex flex-col gap-3 mb-4">
+            {rows.map(row => (
+              <div key={row.id} className="grid grid-cols-12 gap-2 items-center" style={{ borderBottom: `1px solid ${C.steelDim}20`, paddingBottom: 10 }}>
+                <div className="col-span-3" style={{ color: C.deck, fontFamily: "'JetBrains Mono',monospace", fontSize: 13, wordBreak: 'break-all' }}>
+                  {row.title}
+                  {row.page && <span style={{ display: 'block', color: C.cyan, fontSize: 10 }}>{t('plays on')} {row.page}</span>}
+                </div>
+                <div className="col-span-6" style={{ color: C.steelDim, fontSize: 12, wordBreak: 'break-all' }}>{row.url ?? t('no URL — track cannot play')}</div>
+                <div className="col-span-3 flex justify-end">
+                  <button onClick={() => remove(row.id)} style={{ color: C.red, fontSize: 12, border: `1px solid ${C.red}50`, padding: '6px 10px', background: 'transparent', cursor: 'pointer' }}>{t('Delete')}</button>
+                </div>
               </div>
-            </div>
-          ))}
-          {rows.length === 0 && <p style={{ color: C.steelDim, fontSize: 13 }}>{t('No tracks yet.')}</p>}
-        </div>
+            ))}
+            {rows.length === 0 && <p style={{ color: C.steelDim, fontSize: 13 }}>{t('No tracks yet — the bundled themes play.')}</p>}
+          </div>
+        </>
       )}
       {error && <p style={{ color: C.red, fontSize: 12, marginBottom: 10 }}>{error}</p>}
       <div className="grid grid-cols-12 gap-2 items-center" style={{ borderTop: `1px solid ${C.steelDim}30`, paddingTop: 14 }}>
-        <input className="col-span-3" style={inp} value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder={t('title')} />
-        <input className="col-span-4" style={inp} value={newUrl} onChange={e => setNewUrl(e.target.value)} placeholder={t('audio URL')} />
-        <input className="col-span-2" style={inp} value={newPage} onChange={e => setNewPage(e.target.value)} placeholder={t('page (optional)')} />
+        <input className="col-span-4" style={inp} value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder={t('title')} />
+        <input className="col-span-5" style={inp} value={newUrl} onChange={e => setNewUrl(e.target.value)} placeholder={t('audio URL (https://… or /music/file.mp3 served from /public)')} />
         <button onClick={add} disabled={adding} className="col-span-3" style={{ color: C.graphite, background: C.cyan, fontSize: 12, fontWeight: 600, padding: '7px 10px', border: 'none', cursor: adding ? 'default' : 'pointer', opacity: adding ? 0.6 : 1 }}>{adding ? '…' : t('Add track')}</button>
       </div>
       {addError && <p style={{ color: C.red, fontSize: 12, marginTop: 8 }}>{addError}</p>}
+      {editingPage !== null && (
+        <MusicAssignPopup
+          page={editingPage}
+          currentId={assignmentFor(editingPage)?.id ?? BUNDLED_TRACK_CHOICE}
+          tracks={rows.filter(r => r.page === null || r.page === editingPage)}
+          onPick={commitAssignment}
+          onClose={() => setEditingPage(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+/** Popup for picking the track a page plays: bundled default or a library track. */
+function MusicAssignPopup({ page, currentId, tracks, onPick, onClose }: {
+  page: string; currentId: string
+  tracks: MusicTrackRow[]
+  onPick: (page: string, trackId: string) => Promise<void>
+  onClose: () => void
+}) {
+  const { t } = useLang()
+  const [choice, setChoice] = useState(currentId)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const save = async () => {
+    setSaving(true)
+    setError(null)
+    await onPick(page, choice)
+    setSaving(false)
+  }
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: '#000000aa', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: C.graphite2, border: `1px solid ${C.cyan}50`, width: '100%', maxWidth: 420, padding: 20 }}>
+        <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.1em', marginBottom: 12 }}>{t('TRACK FOR')} {page.toUpperCase()}</p>
+        <select value={choice} onChange={e => setChoice(e.target.value)}
+          style={{ background: C.graphite, border: `1px solid ${C.steelDim}`, color: C.deck, fontSize: 13, padding: '7px 10px', width: '100%', outline: 'none', fontFamily: 'inherit' }}>
+          <option value={BUNDLED_TRACK_CHOICE}>{t('PuzzleStow (bundled)')}</option>
+          {tracks.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
+        </select>
+        {error && <p style={{ color: C.red, fontSize: 12, marginTop: 8 }}>{error}</p>}
+        <div className="flex gap-2 justify-end" style={{ marginTop: 16 }}>
+          <button onClick={onClose} style={{ color: C.steel, fontSize: 12, border: `1px solid ${C.steelDim}50`, padding: '6px 12px', background: 'transparent' }}>{t('Cancel')}</button>
+          <button onClick={save} disabled={saving} style={{ color: C.graphite, background: C.cyan, fontSize: 12, fontWeight: 600, padding: '6px 12px', border: 'none', opacity: saving ? 0.6 : 1 }}>{saving ? '…' : t('Save')}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** VITE_* environment variables the app consumes; values are never rendered. */
+const APP_ENV_VARS: { name: string; purpose: 'required' | 'optional' }[] = [
+  { name: 'VITE_SUPABASE_URL', purpose: 'required' },
+  { name: 'VITE_SUPABASE_PUBLISHABLE_KEY', purpose: 'required' },
+  { name: 'VITE_GEO_URL', purpose: 'optional' },
+]
+
+/** AdminEnvSection — TO_DO item 29: show which env variables the app uses.
+ *  Values live in .env.local (gitignored) and are documented in .env.example;
+ *  they are inlined at build time and must NOT move into the database (the DB
+ *  cannot keep secrets for a public bundle). Values are never displayed.
+ */
+function AdminEnvSection() {
+  const { t } = useLang()
+  const present = new Set(Object.keys(import.meta.env).filter(k => k.startsWith('VITE_')))
+  return (
+    <div style={{ border: `1px solid ${C.cyan}28`, background: C.graphite2 }} className="p-6 mb-6">
+      <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.1em', marginBottom: 4 }}>{t('ENV VARIABLES')}</p>
+      <p style={{ color: C.steelDim, fontSize: 12, marginBottom: 16 }}>
+        {t('Stored in .env.local (gitignored), documented in .env.example, inlined by Vite at build time. Secrets must stay out of the database; admin-tunable runtime values belong to CONFIG VARIABLES above.')}
+      </p>
+      <div className="flex flex-col gap-2">
+        {APP_ENV_VARS.map(v => (
+          <div key={v.name} className="grid grid-cols-12 gap-2 items-center" style={{ borderBottom: `1px solid ${C.steelDim}20`, paddingBottom: 8 }}>
+            <div className="col-span-6" style={{ color: C.deck, fontFamily: "'JetBrains Mono',monospace", fontSize: 13 }}>{v.name}</div>
+            <div className="col-span-3" style={{ color: C.steelDim, fontSize: 12 }}>{v.purpose === 'required' ? t('required') : t('optional')}</div>
+            <div className="col-span-3 text-right" style={{ color: present.has(v.name) ? C.green : C.red, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>
+              {present.has(v.name) ? t('configured ✓') : t('NOT SET')}
+            </div>
+          </div>
+        ))}
+        {[...present].filter(k => !APP_ENV_VARS.some(v => v.name === k)).map(k => (
+          <div key={k} className="grid grid-cols-12 gap-2 items-center" style={{ borderBottom: `1px solid ${C.steelDim}20`, paddingBottom: 8 }}>
+            <div className="col-span-6" style={{ color: C.deck, fontFamily: "'JetBrains Mono',monospace", fontSize: 13 }}>{k}</div>
+            <div className="col-span-3" style={{ color: C.steelDim, fontSize: 12 }}>{t('custom')}</div>
+            <div className="col-span-3 text-right" style={{ color: C.green, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>{t('configured ✓')}</div>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -3683,7 +3863,7 @@ function AdminNewsSection() {
   return (
     <div style={{ border: `1px solid ${C.cyan}28`, background: C.graphite2 }} className="p-6">
       <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.1em', marginBottom: 4 }}>{t('NEWS LINE')}</p>
-      <p style={{ color: C.steelDim, fontSize: 12, marginBottom: 16 }}>{t('Items for the news-line ticker. Not yet displayed on any public page.')}</p>
+      <p style={{ color: C.steelDim, fontSize: 12, marginBottom: 16 }}>{t('Items for the news-line ticker. Shown live in the ticker bar under the nav on every page.')}</p>
       {loading ? <p style={{ color: C.steel, fontSize: 13 }}>{t('Loading…')}</p> : (
         <div className="flex flex-col gap-3 mb-4">
           {rows.map(row => (
@@ -4107,6 +4287,69 @@ function DevTestPage() {
   const ghostValid = displayGhost?.valid ?? true
   const ghostOutOfBoundsMessage = ghostPlacement?.outOfBoundsMessage
 
+  // Sergey, 2026-11-19 (fair-play UX canon): the >50 % overhang verdict must be visible
+  // AT FIXATION, before any submit — the red ghost already flags it; here we surface the
+  // offer «order fair play» next to SUBMIT. The request to the opponent goes out ONLY
+  // when the player orders it (orderFairPlay below); then the regulation runs: approval
+  // → submit again to confirm, decline → choose a different placement.
+  const [fairPlayOffer, setFairPlayOffer] = useState<{ key: string; pct: number } | null>(null)
+  useEffect(() => {
+    if (!incomingFig || gameOver || clickPoints.length < pointsNeeded) { setFairPlayOffer(null); return }
+    const clicked = clickPoints.slice(0, pointsNeeded)
+    const cells = pointsNeeded === 2
+      ? computePlacementFromDots(incomingFig, clicked)
+      : computePlacementFromAnchor(incomingFig, rotIdx, clicked[0])
+    if (!cells) { setFairPlayOffer(null); return }
+    const key = [...cells].map(([r, c]) => cellKey(r, c)).sort().join('|')
+    const result = checkPlacement(cells, filledYou, DEV_ROWS)
+    if (result.ok || !result.needsFairPlay) { setFairPlayOffer(null); return }
+    setFairPlayOffer({ key, pct: Math.round((result.overhangRatio ?? 0) * 100) })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [incomingFig, clickPoints, pointsNeeded, rotIdx, filledYou, gameOver])
+
+  function orderFairPlay() {
+    if (!incomingFig || gameOver || !fairPlayOffer) return
+    // Same resolution as submitPlacement: click order is the dot order; typed text only
+    // when it no longer matches what the clicks would generate.
+    const clicked = clickPoints.slice(0, pointsNeeded)
+    const clickGenerated = clicked.length >= pointsNeeded && pointsNeeded > 0
+      ? formatNotation(incomingFig.id, clicked, DEV_ROWS)
+      : null
+    const usingClicks = clickGenerated != null && notation === clickGenerated
+    let cells: ReturnType<typeof computePlacementFromDots>
+    if (usingClicks) {
+      cells = pointsNeeded === 2
+        ? computePlacementFromDots(incomingFig, clicked)
+        : computePlacementFromAnchor(incomingFig, rotIdx, clicked[0])
+    } else {
+      const parsed = parseNotation(notation, DEV_ROWS)
+      if ('error' in parsed) { setResponse(t('Invalid: {reason}', { reason: translateEngineText(lang, parsed.error) })); return }
+      cells = parsed.points.length >= 2
+        ? computePlacementFromDots(incomingFig, parsed.points)
+        : computePlacementFromAnchor(incomingFig, rotIdx, parsed.points[0])
+    }
+    if (!cells) return
+    const cellsKey = [...cells].map(([r, c]) => cellKey(r, c)).sort().join('|')
+    if (cellsKey !== fairPlayOffer.key) { setFairPlayOffer(null); return }
+    const result = checkPlacement(cells, filledYou, DEV_ROWS)
+    if (result.ok || !result.needsFairPlay) { setFairPlayOffer(null); return }
+    const fp = engine.respondToFairPlay(result.overhangRatio ?? 0)
+    pushLog(t('Fair-play check ({pct}% unsupported): opponent says "{msg}"', { pct: Math.round((result.overhangRatio ?? 0) * 100), msg: translateEngineText(lang, fp.message) }))
+    // 44c: one OUTGOING request = one OUT tally entry, guarded by the cells key.
+    if (pendingFairPlay?.key !== cellsKey) {
+      setFairPlayOut(o => fp.kind === 'fair_play_response' && fp.approve
+        ? { ...o, approved: o.approved + 1 }
+        : { ...o, declined: o.declined + 1 })
+    }
+    if (fp.kind === 'fair_play_response' && fp.approve) {
+      setPendingFairPlay({ key: cellsKey })
+      setFairPlayOffer(null)
+      setResponse(`${t(result.reason ?? '')} — ${t('opponent agreed via fair play. Submit again to confirm.')}`)
+    } else {
+      setResponse(`${t(result.reason ?? '')} — ${t('opponent declined fair play. Choose a different placement.')}`)
+    }
+  }
+
   function handleYourContainerClick(r: number, c: number) {
     if (!incomingFig || gameOver) return
     setClickPoints(prev => (prev.length >= pointsNeeded ? [{ r, c }] : [...prev, { r, c }]))
@@ -4269,24 +4512,13 @@ function DevTestPage() {
     const result = checkPlacement(cells, filledYou, DEV_ROWS, cellsKey != null && pendingFairPlay?.key === cellsKey)
     if (!result.ok) {
       if (result.needsFairPlay) {
-        const fp = engine.respondToFairPlay(result.overhangRatio ?? 0)
-        pushLog(t('Fair-play check ({pct}% unsupported): opponent says "{msg}"', { pct: Math.round((result.overhangRatio ?? 0) * 100), msg: translateEngineText(lang, fp.message) }))
-        // 44c: this is an OUTGOING fair-play request (yours) — the opponent's APPROVED /
-        // DECLINED verdict counts into your OUT tally immediately, exactly per the
-        // protocol (APPROVED QTY / DECLINED QTY), even if you then place elsewhere.
-        // Counted once per request: the pendingFairPlay key guards the resubmit.
-        if (pendingFairPlay?.key !== cellsKey) {
-          setFairPlayOut(o => fp.kind === 'fair_play_response' && fp.approve
-            ? { ...o, approved: o.approved + 1 }
-            : { ...o, declined: o.declined + 1 })
-        }
-        if (fp.kind === 'fair_play_response' && fp.approve && cellsKey != null) {
-          setPendingFairPlay({ key: cellsKey })
-          setResponse(`${t(result.reason ?? '')} — ${t('opponent agreed via fair play. Submit again to confirm.')}`)
-        } else {
-          setPendingFairPlay(null)
-          setResponse(`${t(result.reason ?? '')} — ${t('opponent declined fair play. Choose a different placement.')}`)
-        }
+        // Sergey, 2026-11-19 (fair-play UX canon): submit alone NEVER fires the request —
+        // the offer is already visible at fixation; submitting a >50 % placement without
+        // having ordered fair play just echoes the verdict and points at the button.
+        const key = cellsKey ?? ''
+        setFairPlayOffer({ key, pct: Math.round((result.overhangRatio ?? 0) * 100) })
+        setPendingFairPlay(null)
+        setResponse(`${t(result.reason ?? '')} — ${t('order fair play to ask the opponent.')}`)
         return
       }
       setPendingFairPlay(null)
@@ -4512,6 +4744,15 @@ function DevTestPage() {
               <button onClick={submitPlacement} disabled={!incomingFig || !notation || !!gameOver}
                 style={{ background: C.cyan, color: C.graphite, fontWeight: 700, fontSize: 12, padding: '8px 14px', opacity: incomingFig && notation && !gameOver ? 1 : 0.4 }}>SUBMIT</button>
             </div>
+            {fairPlayOffer && (
+              <div className="flex items-center gap-3 mb-2">
+                <span style={{ color: C.red, fontFamily: "'JetBrains Mono',monospace", fontSize: 12 }}>{t('{pct}% unsupported', { pct: fairPlayOffer.pct })}</span>
+                <button onClick={orderFairPlay} disabled={!!gameOver}
+                  style={{ background: C.red, color: '#FFFFFF', fontWeight: 700, fontSize: 12, padding: '8px 14px', opacity: gameOver ? 0.4 : 1 }}>
+                  {t('Order fair play')}
+                </button>
+              </div>
+            )}
             <p style={{ color: C.steelDim, fontSize: 11, marginBottom: 4 }}>{t('Response:')}</p>
             <input value={responseText} disabled readOnly
               style={{ width: '100%', background: C.graphite, border: `1px solid ${responseIsError ? C.red : C.steelDim}40`, color: responseIsError ? C.red : C.steel, fontFamily: "'JetBrains Mono',monospace", fontSize: 12, padding: '8px 10px' }} />
@@ -4611,6 +4852,15 @@ export default function App() {
 function AppShell() {
   const { lang, t, geoSuggestion } = useLang()
   const [page, setPage] = useState<Page>(() => (getAuthRedirectType() === 'recovery' ? 'auth' : 'home'))
+  // TO_DO 29 (music + news line): real background music and the public news
+  // ticker. Music state is lifted from Nav so it survives page changes; the
+  // track follows admin overrides from music_tracks (bundled themes as the
+  // fallback) and the choice persists.
+  const [musicOn, setMusicOn] = useState<boolean>(readStoredMusicOn)
+  const { overrides: musicOverrides } = useMusicOverrides()
+  useSiteMusic(resolveMusicSrc(page, musicOverrides), musicOn)
+  const toggleMusic = (): void => setMusicOn(v => { storeMusicOn(!v); return !v })
+  const { items: newsItems } = useActiveNews()
   // Captured once, like `page` above -- getAuthRedirectType() reads the URL hash live,
   // and Supabase's own client clears that hash once it finishes parsing the recovery
   // tokens from it, so recomputing this on every render would flip it back to false
@@ -4696,8 +4946,9 @@ function AppShell() {
   }
 
   return (
-    <div style={{ background: C.graphite, minHeight: '100vh' }}>
-      <Nav page={page} setPage={setPage} isLoggedIn={isLoggedIn} isAdmin={profile?.role === 'Administrator'} onSignOut={() => { supabase.auth.signOut(); setPage('home') }} />
+    <div style={{ background: C.graphite, minHeight: '100vh', paddingTop: newsItems.length > 0 ? TICKER_HEIGHT : 0 }}>
+      <Nav page={page} setPage={setPage} isLoggedIn={isLoggedIn} isAdmin={profile?.role === 'Administrator'} onSignOut={() => { supabase.auth.signOut(); setPage('home') }} musicOn={musicOn} onToggleMusic={toggleMusic} />
+      <NewsTicker items={newsItems} />
       {authNotice && (
         <div style={{ background: `${C.cyan}18`, borderBottom: `1px solid ${C.cyan}40`, color: C.cyan, fontSize: 13, padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, position: 'relative' }}>
           <span>{authNotice}</span>

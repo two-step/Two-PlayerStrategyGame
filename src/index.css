@@ -47,3 +47,21 @@ button:not(:disabled) {
 button:disabled {
   cursor: not-allowed;
 }
+
+/* ── News ticker (TO_DO 29) ──────────────────────────────────────────────── */
+@keyframes ps-ticker-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.ps-ticker-track {
+  display: inline-flex;
+  white-space: nowrap;
+  will-change: transform;
+  animation: ps-ticker-scroll var(--ps-ticker-duration, 40s) linear infinite;
+}
+.ps-ticker:hover .ps-ticker-track {
+  animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ps-ticker-track { animation: none; }
+}
