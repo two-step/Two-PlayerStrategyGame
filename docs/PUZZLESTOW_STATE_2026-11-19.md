@@ -67,7 +67,9 @@ CEILING/ENTRANCE_PUSH), App.tsx (fair-play UX + музыка), регресси�
 ## 4. Git (main)
 
 Ветка `main` запушена на origin 2026-11-19 (вариант Б — полный пуш, с явной авторизацией
-Sergey на коммит правил/движка).`.tmp_read/`, `.codex/`, `.vscode/`, `tmp_engine/` — в
+Sergey на коммит правил/движка): `git -c credential.helper=manager push origin main` →
+8c901fa..5673345. Ловушка: в агентской оболочке голый `git push` не находит креды —
+всегда передавать `-c credential.helper=manager` (Git Credential Manager Windows).`.tmp_read/`, `.codex/`, `.vscode/`, `tmp_engine/` — в
 `.gitignore`.
 
 ## 5. TO_DO — актуальная нумерация (номера сверять только по файлу)
