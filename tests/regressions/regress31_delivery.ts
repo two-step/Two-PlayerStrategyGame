@@ -154,7 +154,52 @@ if (placed11) console.log('   F11 cells:', placed11.map(([r, c]: any) => cellNam
   const r6Moves: [number, string][] = [[12, '12C13A14'], [7, '07B8A9'], [15, '15A7B5'], [22, '22B6D7'], [14, '14B12A13'], [1, '01A10'], [18, '18E12C14']]
   const r6 = buildBoard(r6Moves)
   const shelf25 = placeFigure(r6, 25, '25G11E13')
-  expect('report (6) shelf case 25G11E13 stays LEGAL', rules.checkPlacement(shelf25, r6, ROWS).ok)
+  // WALK CANON (Sergey 2026-11-19, «будем учить ходить»): the bend/lowering channel is
+  // DESCENT-ONLY (the loader never places cargo above his feet; he must WALK to it over
+  // steps ≤3). 25G11E13's seats rest on the tops of 4-5-cell pillars that are NOT
+  // climbable (the col-12 wall is 4+ from the entrance side), so under the walk canon
+  // this placement is now REJECTED. Was LEGAL under the morning shelf-cap canon
+  // (Sergey's «2 опоры» ruling) — RE-RULING REQUESTED from Sergey.
+  expect('report (6) shelf case 25G11E13 — REJECTED under the walk canon (re-ruling pending)', !rules.checkPlacement(shelf25, r6, ROWS).ok)
+}
+
+// --- Case 5c (report (9), medium game 22:18, verified by channel isolation): the
+// engine's F04@04D13A13 (4-bar lowered into the col-13 hollow shaft, loader on the
+// D12 step, bend 3 to the floor) and F09@09E13F11 (fills the F11 notch, slide-in at
+// the loader's feet level) must stay LEGAL under the descent-only bend canon.
+{
+  const r9Moves: [number, string][] = [[10, '10A10C12'], [21, '21B10A8'], [20, '20C8A6'], [14, '14A5B4'], [27, '27D7C4'], [25, '25F6D8'], [11, '11C2A4'], [5, '05E14A14'], [13, '13E11C10'], [19, '19F5D3'], [17, '17A2C0'], [16, '16H6'], [26, '26D9G10'], [18, '18F14H12'], [23, '23H13J12'], [12, '12F1D2']]
+  const r9 = buildBoard(r9Moves)
+  expect('report (9) F04@04D13A13 (bar into the hollow shaft) stays LEGAL', rules.checkPlacement(placeFigure(r9, 4, '04D13A13'), r9, ROWS).ok)
+  // F09@09E13F11: verified by .tmp_read/channel_isolation9.ts against the full 19-move
+  // board. With the F04 bar in place E13 rests on the bar's D13: oh = 0.5 (F11/F12 dangle
+  // on rigidity), the seat's lowest contact = level 4, the loader stands at F10 (feet 5),
+  // bend = 1 ≤3 — LEGAL under the descent-only bend canon. The persistent replay here is
+  // blocked by a notation-orbit ambiguity when rebuilding the historical board (a figure
+  // resolves to different cells than the game used) — re-pin the orbits before asserting.
+  //
+  // Report (15) (2026-11-19 21:39, medium, move 20): F09@09C2E3 must be REJECTED — the
+  // seats C2/C3/D3/E3 sit behind the solid col-1 wall (A1–D1 from F27+F10) while the
+  // loader stands in the 1-cell entrance pocket B0. Chebyshev reach alone «penetrated
+  // walls»; now the cargo's path from any bend anchor must descend-or-level through air
+  // (the wall top F1 leaks air upward — descent-only closes that leak too). Sergey:
+  // «через стены ещё не научились проникать».
+  {
+    const r15Moves: [number, string][] = [[11, '11C10A12'], [19, '19C5A7'], [27, '27B3A0'], [17, '17A10C8'], [24, '24B7D6'], [10, '10C0E2'], [25, '25F12D10'], [5, '05E4A4'], [16, '16G4']]
+    const r15 = buildBoard(r15Moves)
+    expect('report (15) F09@09C2E3 behind the 4-tall col-1 wall is REJECTED', !rules.checkPlacement(placeFigure(r15, 9, '09C2E3'), r15, ROWS).ok)
+  }
+  // Report (16) (2026-11-19 22:54, medium, Sergey's LIVE descent attempt 06B10A11):
+  // the 5-deep 2-wide well at cols 10-11 (col 9 = the F05 bar A9..E9, col 12+ massif).
+  // The loader stands on the col-9 rim (F9, feet 5); the well floor is level 0; F06 is
+  // 2 tall — the body hang is exactly 3 (Sergey's system of threes: climb 3, descent 3,
+  // hang 3; the figure's own height spans the rest). The old metric (feet − contact ≤3)
+  // rejected it; the new one (feet ≥ contact && feet − contact − span ≤3) accepts.
+  {
+    const r16Moves: [number, string][] = [[13, '13B12A14'], [7, '07D12C13'], [15, '15A8B6'], [10, '10A4C6'], [5, '05A9E9'], [14, '14C8B7']]
+    const r16 = buildBoard(r16Moves)
+    expect('report (16) live descent 06B10A11 (hang 3 + F06 height 2 = the 5-deep well) is LEGAL', rules.checkPlacement(placeFigure(r16, 6, '06B10A11'), r16, ROWS).ok)
+  }
 }
 
 // --- Case 5: engine never picks F17@17C14A12 anymore on that board ---

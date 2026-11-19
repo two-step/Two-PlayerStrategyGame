@@ -470,7 +470,12 @@ export function minPassableWidth(cells: Cells): number {
 const widthReachCache = new Map<string, Set<string>>()
 const WIDTH_REACH_CACHE_CAP = 200
 
-function reachableCellsForWidth(filled: Set<string>, rows: number, width: number): Set<string> {
+/** Loader-walk reach filtered by a `width`x`width` probe box: cells a cargo of the
+ * given minimal width can actually be carried to (the engine uses width 2 to find
+ * «only-for-Mono» cells — Sergey, report (14) 2026-11-19). Memoized per board.
+ * Preconditions: `filled` keys are valid `r,c` inside `rows`×COLS; postcondition:
+ * pure query; invariant: no rule mutation — read-only flood. */
+export function reachableCellsForWidth(filled: Set<string>, rows: number, width: number): Set<string> {
   const cacheKey = `${rows}|${[...filled].sort().join(';')}|${width}`
   const cached = widthReachCache.get(cacheKey)
   if (cached) return cached
@@ -703,51 +708,136 @@ export function deliveryReachable(filled: Set<string>, rows: number, cells: Cell
   return deliveryReachableCore(cells, rows, reachableCells(filled, rows), envelopeTransitAnchors(filled, rows, cells))
 }
 
-// Sergey, 2026-11-19 (report (5), live case 11E11C13, canon rule text): «Опускать груз
-// с больших ступеней для уменьшения их высоты, грузчик может, перегнувшись на три
-// ступени, так чтобы было возможно установить его без бросания.» The sliding-transit
-// model above answers only how cargo TRAVELS on its own; this rule answers how cargo is
-// INSTALLED next to the loader: standing anywhere the run model lets him (reachableCells),
-// he bends over up to three steps and lowers the piece into the neighbouring pit —
-// including cells he cannot stand in himself and cells the piece could never slide to on
-// its own. Two conditions, both from the canon text:
-//   1. «перегнувшись на три ступени» — every cell of the seat (and of the holding
-//      position below) lies within Chebyshev distance ≤3 of some loader-reachable
-//      standing cell. Chebyshev, not Manhattan: bending over a step edge is an arm
-//      reach, and the live case needs it (C13 is 2 down + 2 right of the standing
-//      notch E11 = L1 4, Chebyshev 2).
-//   2. «без бросания» — the piece must arrive by a CONTROLLED slide: some rigid
-//      one-step shift of the seat (an adjacent holding position) is fully empty, so
-//      the final placement is a one-step guided motion, never a free drop.
-// Discriminator against the already-ruled case (report (3), F17@17C14A12 «через
-// проход в две ячейки нельзя»): there every one-step shift collides with B12/the wall
-// (no controlled slide exists), so that placement stays rejected — verified.
-// Anchor footing stays the run model as-is (Sergey, 2026-11-19: «стоя anywhere the
-// run model lets him» — the 25G11E13 shelf case is lowered through shaft cells that
-// have no direct support below; filtering anchors by support broke it). The 44a
-// «выемка… не считается опорой» concern is enforced STRUCTURALLY instead — see
-// hoversOverForbiddenNotch below.
+// Sergey, 2026-11-19 (canon «будем учить ходить», live report 14:15 F13@13E12D14): the
+// loader WALKS the container with the cargo. Climb and descent rules are SEPARATE and
+// never mix:
+//   - WALK (the run model): a step up ≤3 is climbed with the cargo; a step down ≤3 is
+//     walked; anything deeper/taller on foot is impassable; notches never help climbing
+//     a sheer >3 wall. Already enforced by reachableCells/canBridge.
+//   - BEND (this channel) is for DESCENT ONLY: standing at the rim of a pit deeper than
+//     3, the loader lowers the current cargo by bending down AT MOST 3 cells («перегнувшись
+//     вниз на 3 ячейки максимум»), and only if the cargo REACHES A SUPPORT («если достану
+//     до опоры — бросать нельзя»): every seat cell's column chain must terminate on
+//     pre-existing material or the floor — no dangling seats. Bending UP is not a thing:
+//     cargo is never placed above the loader's feet level through this channel (that
+//     would need climbing, governed solely by the ≤3 step rule).
+//   - The loader's own cell never becomes cargo: he stands beside/below the seat area.
+//   - The cargo's path from the loader to the seats goes through OPEN AIR (Sergey,
+//     2026-11-19, report (15) F09@09C2E3: the loader stood in the entrance pocket B0
+//     while the seats sat behind a 4-tall wall — «через стены ещё не научились
+//     проникать»): every seat must be 4-connected to the anchor through pre-empty cells.
+// Vertical metric is the SHELF distance (feet level − the seat's lowest contact level
+// ≤3), not the raw row distance — the F13 case (seats 4 steps above the floor, diagonal
+// Chebyshev 3) is REJECTED; the 11E11C13 precedent (loader in the D11 notch, feet 3,
+// contacts at level 2, bend 1) stays LEGAL.
+// The «без бросания» controlled-slide hold condition is unchanged.
 // Deliberately ADDITIVE like hasTurningPocketNear: it only widens acceptance for the
 // specific «lowered from the step edge» case and cannot regress sliding-legal moves.
 function loaderLoweringReachable(filled: Set<string>, rows: number, cells: Cells): boolean {
   const stand = reachableCells(filled, rows)
   if (!stand.size) return false
-  const withinBend = (pts: Cells): boolean =>
+  // The seat's lowest contact level: follow each seat cell's own-column chain down
+  // through SEAT cells until pre-existing material or the floor. A chain ending in air
+  // means the cargo never reaches a support here — no bend placement is possible.
+  const seatSet = new Set(cells.map(([r, c]) => cellKey(r, c)))
+  // The cargo as a WHOLE must reach a support («достану до опоры»): at least one
+  // seat cell's column chain (own cells down) terminates on pre-existing material or
+  // the floor. Individual cells may dangle — the ≤50 % rigidity canon governs them —
+  // but the bend metric is the LOWEST contact level (the deepest support the loader
+  // must reach down to).
+  const seatSetChains = seatSet
+  let contactLevel = Infinity
+  let anyContact = false
+  for (const [r, c] of cells) {
+    let rr = r
+    while (rr + 1 < rows && seatSetChains.has(cellKey(rr + 1, c))) rr++
+    if (rr + 1 >= rows) { contactLevel = Math.min(contactLevel, 0); anyContact = true; continue } // the floor
+    if (!filled.has(cellKey(rr + 1, c))) continue // dangling chain — the overhang rule governs it
+    contactLevel = Math.min(contactLevel, rows - 1 - rr)
+    anyContact = true
+  }
+  if (!anyContact) return false // the cargo touches no support at all
+  // Sergey, 2026-11-19 (report (16), live attempt 06B10A11, «хочется системы: для
+  // подъёма три, для спуска три и для свисания 3»): the loader's BODY hangs at most
+  // 3 cells below his feet; the figure's own height spans the rest of the way down to
+  // the support. In a 5-deep well with a 2-tall figure the hang is exactly 3. So the
+  // anchor window is: feet ≥ contact (descent only — never lifting) and
+  // (feet − contact) − figureSpan ≤ 3, where figureSpan is the figure's vertical
+  // extent in the placed orientation. A shallow set-down (feet − contact < span,
+  // e.g. 11E11C13) is untouched — the figure simply does not need the full hang.
+  let minR = Infinity, maxR = -Infinity
+  for (const [r] of cells) { if (r < minR) minR = r; if (r > maxR) maxR = r }
+  const figureSpan = maxR - minR + 1
+  // Supported, non-seat standing cells within the hang window — the loader's
+  // positions that can serve this seat at all.
+  const bendAnchorSet = new Set<string>()
+  for (const key of stand) {
+    const [sr, sc] = key.split(',').map(Number)
+    if (seatSet.has(key)) continue // the loader's body cell never becomes cargo
+    if (sr + 1 < rows && !filled.has(cellKey(sr + 1, sc))) continue // mid-air: not standing
+    const feet = rows - 1 - sr
+    if (feet < contactLevel) continue // descent only — the cargo never goes above the feet
+    if (feet - contactLevel - figureSpan > 3) continue // body hang at most 3 (system of threes)
+    bendAnchorSet.add(key)
+  }
+  if (!bendAnchorSet.size) return false
+  // «Через стены ещё не научились проникать» (Sergey, 2026-11-19, report (15),
+  // engine F09@09C2E3): Chebyshev reach alone let the loader «lay» the cargo BEHIND a
+  // 4-tall wall — he stood in the 1-cell entrance pocket B0 while the seats C2..E3 sat
+  // past the solid A1–D1 column. And an unrestricted air path is not enough either:
+  // the wall's col-1 cells are open ABOVE their top (F1), so the air leaks over the
+  // top — but the bend is DESCENT ONLY («перегнувшись», never lifting the cargo over
+  // anything). The cargo's path from the loader to every seat must descend or stay
+  // level (row never decreases) through pre-empty cells. No such path from ANY
+  // covering anchor — the wall cannot be penetrated or surmounted, no bend.
+  // airCells = EVERY pre-empty cell (the whole open air, seats included — they are
+  // empty before the placement): the cargo's descent path travels through the air,
+  // not only through its own future cells.
+  const airCells = new Set<string>()
+  for (let r = 0; r < rows; r++) for (let c = 0; c < COLS; c++) if (!filled.has(cellKey(r, c))) airCells.add(cellKey(r, c))
+  const seatsConnected = (anchor: string): boolean => {
+    const seen = new Set<string>([anchor])
+    const queue = [anchor]
+    let hit = 0
+    for (let qi = 0; qi < queue.length; qi++) {
+      const [r, c] = queue[qi].split(',').map(Number)
+      for (const [dr, dc] of [[1, 0], [0, -1], [0, 1]] as [number, number][]) {
+        const k = cellKey(r + dr, c + dc)
+        if (seen.has(k) || !airCells.has(k)) continue
+        seen.add(k)
+        queue.push(k)
+        if (seatSet.has(k)) hit++
+      }
+    }
+    return hit === seatSet.size
+  }
+  let servingAnchor = false
+  for (const anchor of bendAnchorSet) {
+    if (seatsConnected(anchor)) { servingAnchor = true; break }
+  }
+  if (!servingAnchor) return false
+  // Arm's reach gate: horizontal ±3 (the arm system), vertical ±(3 + figureSpan) —
+  // the body may hang 3 and the figure spans the rest (Sergey's system of threes,
+  // report (16)). Upward offset stays impossible for serving anchors anyway
+  // (descent-only), but the gate is symmetric for simplicity of the pre-filter.
+  const near = (pts: Cells): boolean =>
     pts.every(([r, c]) => {
-      for (let dr = -3; dr <= 3; dr++) {
+      for (let dr = -(3 + figureSpan); dr <= 3 + figureSpan; dr++) {
         for (let dc = -3; dc <= 3; dc++) {
-          if (stand.has(cellKey(r + dr, c + dc))) return true
+          if (bendAnchorSet.has(cellKey(r + dr, c + dc))) return true
         }
       }
       return false
     })
-  if (!withinBend(cells)) return false
+  if (!near(cells)) return false
+  // «без бросания»: some rigid one-step shift of the seat (an adjacent holding
+  // position) is fully empty, so the final placement is a one-step guided motion.
   const dirs: [number, number][] = [[-1, 0], [1, 0], [0, -1], [0, 1]]
   return dirs.some(([dr, dc]) => {
     const hold = cells.map(([r, c]) => [r + dr, c + dc] as [number, number])
     if (hold.some(([r, c]) => r < 0 || r >= rows || c < 0 || c >= COLS)) return false
     if (!hold.every(([r, c]) => !filled.has(cellKey(r, c)))) return false
-    return withinBend(hold)
+    return near(hold)
   })
 }
 
@@ -1128,6 +1218,19 @@ export function checkPlacement(cells: Cells | null, filled: Set<string>, rows: n
     if (vGroundedEarly.has(cellKey(r, c))) continue
     const shelf = rows - heights[c] - 1
     if (!shelfExempt && shelf - r > 3) {
+      // Sergey, 2026-11-19 (report of 12:28, F25@25E8G10): a >50 % dangle over a 3-tall
+      // stepped shelf must reach the FAIR-PLAY stage, not die here — rule 03 lets the
+      // players confirm any overhang bilaterally; the cap only speaks for the ≤50 %
+      // rigid tolerance. An approved fair play skips the cap entirely.
+      if (ohEarly > 0.5) {
+        if (!hasWorldSupport(cells, filled, rows)) {
+          return { ok: false, reason: 'No support — this placement doesn’t rest on the floor or on any existing piece anywhere', overhangRatio: ohEarly, cells }
+        }
+        if (!fairPlayApproved) {
+          return { ok: false, reason: `${Math.round(ohEarly * 100)}% unsupported — needs fair-play confirmation from both players`, overhangRatio: ohEarly, needsFairPlay: true, cells }
+        }
+        continue
+      }
       return {
         ok: false,
         reason: 'Cargo can’t reach this spot — a step taller than 3 cells blocks the path from the entrance (build an intermediate step first)',
@@ -1213,7 +1316,10 @@ function placementLegality(cells: Cells, filled: Set<string>, rows: number, pre:
   const heights = colHeights(filled, rows)
   for (const [r, c] of cells) {
     if (grounded.has(cellKey(r, c))) continue
-    if (!shelfExempt && rows - heights[c] - 1 - r > 3) return false
+    if (!shelfExempt && rows - heights[c] - 1 - r > 3 && ohRatio <= 0.5) return false
+    // ohRatio > 0.5: competent mode still rejects below via its own fair-play-clean
+    // check; honest44e keeps fair-play-pending loads placeable (44e) — Sergey,
+    // 2026-11-19, report of 12:28 (F25@25E8G10 must reach the fair-play stage).
   }
   if (mode === 'honest44e') return true
   const nextFilled = new Set(filled)

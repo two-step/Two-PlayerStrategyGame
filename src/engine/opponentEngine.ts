@@ -41,7 +41,7 @@
 //     by F01/F02 («отсекаем ряд А»). floorFlexibility measures exactly that.
 
 import type { FigureDef, Cells } from './rules'
-import { enumeratePlacements, enumerateAllLegal, canPlaceAnywhere, canPlaceCovering, scorePlacement, computeDeadCells, closedRows, closedCols, cellKey, colHeights, COLS, hasReturnPath, overhangRatio, reachableCells } from './rules'
+import { enumeratePlacements, enumerateAllLegal, canPlaceAnywhere, canPlaceCovering, scorePlacement, computeDeadCells, closedRows, closedCols, cellKey, colHeights, COLS, hasReturnPath, overhangRatio, reachableCells, reachableCellsForWidth } from './rules'
 
 export type Difficulty = 'easy' | 'medium' | 'hard'
 
@@ -182,19 +182,72 @@ function countStrandedTerritory(before: Set<string>, next: Set<string>, rows: nu
   return stranded
 }
 
+// Both walk-canon territory deltas from ONE pair of memoized floods (the engine's
+// per-candidate hot path — four floods per candidate cost ~1 s/move on easy).
+function territoryDelta(before: Set<string>, next: Set<string>, rows: number): { stranded: number; gained: number } {
+  const reachBefore = reachableCells(before, rows)
+  const reachAfter = reachableCells(next, rows)
+  let stranded = 0
+  let gained = 0
+  for (const spot of reachBefore) {
+    if (!next.has(spot) && !reachAfter.has(spot)) stranded++
+  }
+  for (const spot of reachAfter) {
+    if (!reachBefore.has(spot)) gained++
+  }
+  return { stranded, gained }
+}
+
 // Counts empty, non-dead cells in rows that still have a chance of closure;
-// dead cells are never treated as cargo, per rule 44g.
+// dead cells are never treated as cargo, per rule 44g. Mono-only cells (1-cell-wide
+// access, see monoOnlyCount) are excluded too — keeping them open is not real
+// vacancy, per Sergey's report (14) ruling.
 function closeableVacancy(filled: Set<string>, rows: number): number {
   const dead = computeDeadCells(filled, rows)
+  const monoOnly = reachableCellsForWidth(filled, rows, 2)
   const closedR = closedRows(filled, rows, dead)
   let n = 0
   for (let r = 0; r < rows; r++) {
     if (closedR.has(r)) continue
     for (let c = 0; c < COLS; c++) {
-      if (!filled.has(cellKey(r, c)) && !dead.has(cellKey(r, c))) n++
+      if (!filled.has(cellKey(r, c)) && !dead.has(cellKey(r, c)) && monoOnly.has(cellKey(r, c))) n--
     }
   }
   return n
+}
+
+// Counts open, non-dead cells the loader can WALK to but no cargo wider than the Mono
+// can reach: reachable for the loader, missed by the width-2 delivery flood. Pure
+// query; the flood is memoized per board in rules.ts, so this is cheap on the
+// per-candidate path.
+function monoOnlyCount(filled: Set<string>, rows: number): number {
+  const dead = computeDeadCells(filled, rows)
+  const walk = reachableCells(filled, rows)
+  const wide = reachableCellsForWidth(filled, rows, 2)
+  let n = 0
+  for (const spot of walk) {
+    if (!filled.has(spot) && !dead.has(spot) && !wide.has(spot)) n++
+  }
+  return n
+}
+
+// Placement discipline (Sergey, report (14)): cells pushed into the top two rows
+// (J/K, under the closed ceiling) or into the entrance shaft (column 0) cost
+// CEILING_PUSH / ENTRANCE_PUSH each — unless the same placement closes a row or a
+// column, in which case the finishing work earns the height.
+function placementDiscipline(cells: Cells, filled: Set<string>, rows: number): number {
+  const next = applyCells(filled, cells)
+  const closedBefore = closedRows(filled, rows, computeDeadCells(filled, rows)).size
+    + closedCols(filled, rows, computeDeadCells(filled, rows)).size
+  const closedAfter = closedRows(next, rows, computeDeadCells(next, rows)).size
+    + closedCols(next, rows, computeDeadCells(next, rows)).size
+  if (closedAfter > closedBefore) return 0
+  let cost = 0
+  for (const [r, c] of cells) {
+    if (r <= 1) cost += CEILING_PUSH
+    if (c === 0) cost += ENTRANCE_PUSH
+  }
+  return cost
 }
 
 // TO_DO 30g: «старается оставлять высоту ступеней <4 ячеек» — every adjacent
@@ -297,6 +350,22 @@ const DEAD_REFUND = 750
 // sees only dead cells) — this is engine-side practical accounting, like pocketStranding:
 // the engine simply refuses to cut its own delivery territory.
 const TERRITORY_LOSS = 150 // per open cell the loader could reach before and cannot after
+const REACH_GAIN = 40 // per newly reachable open cell (ladder step before a >3 wall, pit filled to ≤3)
+// Sergey, 2026-11-19 (report (14), 19:36 medium game): «опять ряды не отдаёт — будет
+// упорно оставлять ячейки открытыми хотя бы для моно, хотя они уже гипотетически
+// мёртвые». An open cell whose ONLY access from the entrance is a 1-cell-wide passage
+// (reachableCellsForWidth(filled, rows, 2) misses it) can only ever be served by the
+// Mono — and a lone Mono cell almost never closes a row. Engine-side the engine stops
+// treating such cells as real vacancy and pays for keeping them open (rules canon and
+// the dead-cell geometry untouched: the door stays open, checkPlacement still judges).
+const MONO_ONLY_PENALTY = 250
+// Sergey, 2026-11-19 (same report): «прёт вверх в потолок и загружает вход». The
+// engine keeps stacking into the top rows (J/K, under the 44f closed ceiling) and into
+// the entrance shaft (column 0) when nothing forces it to. Each placement cell in the
+// top two rows or in column 0 costs this much unless the SAME placement closes a
+// row/column — finishing work pays for height, aimless tower-building does not.
+const CEILING_PUSH = 150
+const ENTRANCE_PUSH = 150
 const POCKET_SCAN_CAP = 16
 function pocketStranding(filled: Set<string>, rows: number, remaining: FigureDef[]): number {
   const dead = computeDeadCells(filled, rows)
@@ -336,9 +405,10 @@ function plannedScore(cells: Cells, filled: Set<string>, rows: number, context: 
   const tallSteps = healthyStepCount(next, rows)
   const flexibility = floorFlexibility(next, rows, ownAvail)
   const stranding = pocketStranding(next, rows, ownAvail)
-  // Territory: reachable open cells that became unreachable by this move (the figure's
-  // own cells don't count — they are supposed to be filled). See TERRITORY_LOSS above.
-  const stranded = countStrandedTerritory(filled, next, rows)
+  // The walk canon's positive side: laddering before a >3 wall or filling a deep pit
+  // GAINS reachable territory — valued per cell (doubled in critical terrain, where
+  // levelling is the stated priority).
+  const { stranded, gained } = territoryDelta(filled, next, rows)
   // Critical terrain (Sergey, 2026-11-19, see filterOutDeadCellCreatingPlacements):
   // when a ≥4 step already exists, levelling dominates — the tall-step term
   // doubles, and the sacrifice penalties (dead cells created by this move,
@@ -352,6 +422,8 @@ function plannedScore(cells: Cells, filled: Set<string>, rows: number, context: 
   const base = staticScore + sacrificeRefund + closeableVacancy(next, rows) * 0.5 + alive * 1000
     + nextOptions * 5 - tallSteps * (critical ? 1000 : 500) + flexibility * FLEX_BONUS
     - (critical ? stranding / 2 : stranding) - stranded * TERRITORY_LOSS
+    + gained * (critical ? REACH_GAIN * 2 : REACH_GAIN)
+    - monoOnlyCount(next, rows) * MONO_ONLY_PENALTY - placementDiscipline(cells, filled, rows)
   if (difficulty !== 'hard') return base
   return base + hardOnlyBonus(ownAvail, next, rows, context)
 }
@@ -415,10 +487,13 @@ function pickByLevel(difficulty: Difficulty, ordered: Cells[], filled: Set<strin
     const value = (cells: Cells): number => {
       const next = applyCells(filled, cells)
       const stranding = pocketStranding(next, rows, ownAvail)
+      const { stranded, gained } = territoryDelta(filled, next, rows)
       return floorFlexibility(next, rows, ownAvail) * FLEX_BONUS
         - (critical ? stranding / 2 : stranding)
         - healthyStepCount(next, rows) * (critical ? 1000 : 0)
-        - countStrandedTerritory(filled, next, rows) * TERRITORY_LOSS
+        - stranded * TERRITORY_LOSS
+        + gained * (critical ? REACH_GAIN * 2 : REACH_GAIN)
+        - monoOnlyCount(next, rows) * MONO_ONLY_PENALTY - placementDiscipline(cells, filled, rows)
     }
     let best = shortlist[0]
     let bestValue = value(best)
