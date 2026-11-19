@@ -12,3 +12,7 @@ logs/
 .claude-replay.*
 .tmp-*
 .mcp.json
+.tmp_read/
+.codex/
+.vscode/
+tmp_engine/

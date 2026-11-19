@@ -56,6 +56,17 @@ interface LogMoveRecord {
 
 // ── 27 Figures (source: otgruzka_figures.json, confirmed) ────────────────────
 const FIGURES: Figure[] = [
+// Порядок dots — КАНОН Сергея (2026-11-18/19, подтверждён кейсом F27 27C14B11):
+// точка 1 = ЛЕВАЯ точка на исходной фигуре, точка 2 = правая («точки обозначены
+// слева направо; первый клик = первая точка, вокруг неё фигура вращается, пока
+// вторая точка не совпадёт со вторым кликом»). otgruzka_figures.json перечисляет
+// reference_dots у 8 фигур (F09/F10/F12/F17/F19/F20/F22/F27) в порядке
+// [правая, левая] — здесь порядок нормализован к [левая, правая]; геометрия cells
+// при этом не меняется. У F21/F22 (зеркальная пара) следование точек противоположное
+// — их пары различимы и при левой нормализации. Обратная запись точек для
+// центрально-симметричной пары (F06/F08/F09/F14–F24, F26/F27; F20 — одиночная)
+// молча даёт установку, повёрнутую на 180°, — computePlacementFromDots читает
+// точку 1 первой и никогда не подставляет зеркальное/обратное прочтение.
   { id:  1, name: 'Mono', label: 'F01', size: 1, cells: [[0,0]], dots: [0] },
   { id:  2, name: 'Domino', label: 'F02', size: 2, cells: [[0,0],[0,1]], dots: [0, 1] },
   { id:  3, name: 'Tromino-I', label: 'F03', size: 3, cells: [[0,0],[0,1],[0,2]], dots: [0, 2] },
@@ -1830,6 +1841,9 @@ function SandboxPage({ setPage: _setPage }: { setPage: (p: Page) => void }) {
     if (!selectedFig || !hoverCell || pointsNeeded !== 2 || clickPoints.length !== 1) return null
     const [p1] = clickPoints
     if (p1.r === hoverCell.r && p1.c === hoverCell.c) return null
+    // STRICT dot-order canon (Sergey, 2026-11-18): point1 = first click and the figure
+    // rotates AROUND it — dot2 of the figure must land on the hovered cell. The mirrored
+    // reading (hovered cell = dot1) is NEVER previewed — it was not chosen.
     const cells = computePlacementFromDots(selectedFig, [p1, hoverCell])
     if (!cells) return null
     const result = checkPlacement(cells, filled, ROWS)
@@ -1867,6 +1881,8 @@ function SandboxPage({ setPage: _setPage }: { setPage: (p: Page) => void }) {
     if (!selectedFig) return
     const clicked = (explicitPoints ?? clickPoints).slice(0, pointsNeeded)
     if (clicked.length < pointsNeeded) { setMessage(t('Click the container to mark the reference point(s) first.')); return }
+    // STRICT dot-order canon (Sergey, 2026-11-18): point1 = first click (the figure then
+    // rotates around it until dot2 meets the second click). No mirrored reinterpretation.
     const cells = pointsNeeded === 2
       ? computePlacementFromDots(selectedFig, clicked)
       : computePlacementFromAnchor(selectedFig, rotIdx, clicked[0])
@@ -4076,7 +4092,9 @@ function DevTestPage() {
     if (!incomingFig || !hoverCell || pointsNeeded !== 2 || clickPoints.length !== 1) return null
     const [p1] = clickPoints
     if (p1.r === hoverCell.r && p1.c === hoverCell.c) return null
-    // Click order, not column order: p1 was clicked first, so it's dots[0]'s target.
+    // STRICT dot-order canon (Sergey, 2026-11-18): point1 = first click and the figure
+    // rotates AROUND it until the figure's dot2 meets the hovered cell. The mirrored
+    // reading (hovered cell = dot1) is NEVER previewed — it was not chosen.
     const cells = computePlacementFromDots(incomingFig, [p1, hoverCell])
     if (!cells) return null
     const result = checkPlacement(cells, filledYou, DEV_ROWS)
@@ -4131,6 +4149,17 @@ function DevTestPage() {
       ]
       const oppClosedAfter = rowsAfter.size + colsAfter.size
       logPlacement('Opponent', fig, decision.cells, Date.now(), Date.now() - requestedAt, newlyClosed, closedYouTotal, oppClosedAfter)
+      // TO_DO 44d for the opponent (2026-11-19, report (4)): as a desperate last
+      // resort the engine may place a load that seals its own exit — the move is
+      // legal (44e), the loss is honest and declared AFTER it lands, exactly like
+      // the player's own 44d check above. Score per Official_Rules end-variant:
+      // loser keeps the rows closed so far, winner gets 5.
+      if (!hasReturnPath(next, DEV_ROWS, decision.cells)) {
+        const msg = t('Opponent loses — its last load sealed the way back to the container exit (44d).')
+        logGameEnd(msg, 5, oppClosedAfter)
+        setGameOver(msg)
+        return
+      }
       if (oppClosedAfter >= 5) {
         logGameEnd(t('Opponent wins — 5 rows/columns closed.'), closedYouTotal, oppClosedAfter)
         setGameOver(t('Opponent wins — 5 rows/columns closed.'))
@@ -4203,21 +4232,21 @@ function DevTestPage() {
 
   function submitPlacement() {
     if (!incomingFig || gameOver) return
-    // Prefer the actual click order over re-parsing the notation text: the string only
-    // records the LEFT/RIGHT position of each point (the official [id][left][right] format),
-    // which loses which point was clicked first — and click order is exactly what tells the
-    // engine which of up to two candidate rotations sharing that same left/right span was
-    // intended (the figure's two reference dots are fixed to specific cells and rotate WITH
-    // the shape, they don't get reassigned to "whichever is on the left now"). Only fall back
+    // Prefer the actual click order over re-parsing the notation text: click order IS
+    // the dot order (point1 = first click; the figure rotates around it — Sergey,
+    // 2026-11-18). Only fall back
     // to parsing the typed text when the field wasn't produced by clicking — i.e. it no longer
     // matches what the current clicks would generate, meaning the player edited or pasted a
-    // notation by hand.
+    // notation by hand (typed notation stays strict: point1 = dots[0], canon).
     const clickedPoints = clickPoints.slice(0, pointsNeeded)
     const clickGeneratedNotation = clickedPoints.length >= pointsNeeded && pointsNeeded > 0
       ? formatNotation(incomingFig.id, clickedPoints, DEV_ROWS)
       : null
     const usingClicks = clickGeneratedNotation != null && notation === clickGeneratedNotation
 
+    // STRICT dot-order canon (Sergey, 2026-11-18): point1 = first click — the figure then
+    // rotates around it until the figure's dot2 meets the second click; the mirrored
+    // reading is never substituted (it was not chosen). Typed notation is the same canon.
     let cells: ReturnType<typeof computePlacementFromDots>
     if (usingClicks) {
       cells = pointsNeeded === 2

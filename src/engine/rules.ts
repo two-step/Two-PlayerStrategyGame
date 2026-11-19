@@ -96,37 +96,39 @@ export function formatNotation(figureId: number, cells: { r: number; c: number }
   return `${String(figureId).padStart(2, '0')}${cells.map(p => formatPoint(p.r, p.c, rows)).join('')}`
 }
 
-// ── Placement from reference-dot targets ───────────────────────────────────────
-// Tries every distinct orientation and both point-orders (the notation doesn't
-// say which target is dots[0] vs dots[1]); returns the first orientation whose
-// two dot cells sit at exactly the requested relative offset from each other.
+// STRICT dot-order canon (Sergey, 2026-11-18/19, кейс F27 27C14B11): point1 =
+// dot1 фигуры (ЛЕВАЯ точка исходной фигуры — порядок dots в App FIGURES
+// нормализован слева направо), point2 = dot2. Фигура ставится точкой 1 в первый
+// клик и вращается ВОКРУГ НЕЁ, пока точка 2 не совпадёт со вторым кликом; если
+// ни одна физическая ориентация не даёт такого совпадения — установки НЕТ:
+// зеркальное прочтение (point1 → dot2, «другая» фигура) никогда не подставляется.
+// СИММЕТРИЯ (2026-11-19, кейс 13A8C9): getOrientations дедуплицирует по
+// множеству клеток, и у симметричных фигур (штанги F02–F05, квадрат F07,
+// Z/S-тетромино F13 и др.) коллапсируют РАССТАНОВКИ ТОЧЕК — у вертикальной F13
+// точка 1 бывает сверху-справа или снизу-слева, а дедупликация оставляет одну;
+// часть нотаций («точка 1 снизу») молча отваливалась («Натацыя не супадае…»).
+// Физический поворот фигуры сохраняет индексы клеток, поэтому каждый
+// представитель разворачивается в полную орбиту из 4 поворотов — клетки у
+// коллапсировавших состояний совпадают с уже перечисленными, меняется только
+// привязка точек; для несимметричных фигур орбита совпадает с самим списком.
 export function computePlacementFromDots(figure: FigureDef, targets: { r: number; c: number }[]): Cells | null {
   if (figure.dots.length < 2 || targets.length < 2) return null
-  const orientations = getOrientations(figure.cells)
+  const t0 = targets[0], t1 = targets[1]
+  const dr = t1.r - t0.r, dc = t1.c - t0.c
   const [d0, d1] = figure.dots
-  const pairs: [{ r: number; c: number }, { r: number; c: number }][] = [
-    [targets[0], targets[1]],
-    [targets[1], targets[0]],
-  ]
-  // Try every orientation against the notation's own point order (point1 -> dots[0],
-  // point2 -> dots[1]) before EVER falling back to the reversed order. The previous
-  // version looped orientation-by-orientation with both pairings checked inside that
-  // same iteration, so a 180 deg (or 270 vs 90 deg) placement could be silently matched
-  // by an EARLIER, unrelated orientation via its reversed pairing instead: rotating
-  // 180 deg exactly negates the dot-to-dot offset, so "orientation N forward" and
-  // "orientation N+2 reversed" are indistinguishable from the offset alone, and the old
-  // loop just returned whichever one it reached first -- an orientation-enumeration
-  // artifact, not the shape the user actually clicked out. Concretely: two-dot figures
-  // rotated 180 deg (e.g. F15) were silently placed back at their 0 deg orientation.
-  for (const [t0, t1] of pairs) {
-    for (const ori of orientations) {
-      const local0 = ori[d0], local1 = ori[d1]
-      const dr = t1.r - t0.r, dc = t1.c - t0.c
-      const ldr = local1[0] - local0[0], ldc = local1[1] - local0[1]
-      if (dr === ldr && dc === ldc) {
-        const offR = t0.r - local0[0], offC = t0.c - local0[1]
-        return ori.map(([r, c]) => [r + offR, c + offC])
+  const seen = new Set<string>()
+  for (const rep of getOrientations(figure.cells)) {
+    let cur = rep
+    for (let k = 0; k < 4; k++) {
+      const a = cur[d0], b = cur[d1]
+      const sig = `${a[0]},${a[1]}>${b[0]},${b[1]}`
+      if (!seen.has(sig)) {
+        seen.add(sig)
+        if (dr === b[0] - a[0] && dc === b[1] - a[1]) {
+          return cur.map(([r, c]) => [r + t0.r - a[0], c + t0.c - a[1]])
+        }
       }
+      cur = rotateCW(cur)
     }
   }
   return null
@@ -322,11 +324,31 @@ function canBridge(a: { top: number; bottom: number }, b: { top: number; bottom:
   return Math.abs(a.bottom - b.bottom) <= 3
 }
 
+// Board signature for the module-level reachability memo: placements within one
+// turn repeatedly re-flood the SAME board (26 figures × shortlisted candidates),
+// so the flood is cached by exact board content. Bounded to keep memory flat —
+// caches are pure performance plumbing, never semantics.
+const reachabilityCache = new Map<string, { top: number; bottom: number }[][]>()
+const REACHABILITY_CACHE_CAP = 200
+
 function reachableRunsByColumn(filled: Set<string>, rows: number): { top: number; bottom: number }[][] {
+  const cacheKey = `${rows}|${[...filled].sort().join(';')}`
+  const cached = reachabilityCache.get(cacheKey)
+  if (cached) return cached
   const perColumn: { top: number; bottom: number }[][] = []
   for (let c = 0; c < COLS; c++) perColumn.push(columnRuns(filled, rows, c))
   const reach: boolean[][] = perColumn.map(runs => runs.map(() => false))
-  perColumn[0].forEach((_, i) => { reach[0][i] = true }) // column 0 = the A0 entrance
+  // The A0 entrance connects to the outside only where the loader can still step
+  // out over the entrance stack: a column-0 run qualifies when the stack covering
+  // the exit is at most 3 cells tall (stackHeight = rows−1−run.bottom ≤ 3 ⇔
+  // run.bottom ≥ rows−4). Sergey's data points: F26 covering A0 (stack 2) was
+  // «всё хорошо»; F21 raising the entrance step to 4 sealed the exit — «ступень
+  // в 4 ячейки»; and 2026-11-18 report (4), move 10: F25@25C0A2 left a stack of
+  // exactly 3 with the loader already AT the entrance and no step >3 anywhere —
+  // «в контейнере нету ступеней >3 ячеек» — so 3 is climbable, 4 is not. The
+  // earlier rows−3 bound silently sealed the exit at stack 3 (off-by-one).
+  // Upper shaft runs above a taller entrance stack do NOT connect outside.
+  perColumn[0].forEach((run, i) => { if (run.bottom >= rows - 4) reach[0][i] = true })
   let changed = true
   while (changed) {
     changed = false
@@ -349,6 +371,8 @@ function reachableRunsByColumn(filled: Set<string>, rows: number): { top: number
   }
   const out: { top: number; bottom: number }[][] = []
   for (let c = 0; c < COLS; c++) out.push(perColumn[c].filter((_, i) => reach[c][i]))
+  if (reachabilityCache.size >= REACHABILITY_CACHE_CAP) reachabilityCache.clear()
+  reachabilityCache.set(cacheKey, out)
   return out
 }
 
@@ -412,20 +436,44 @@ export function bboxSize(cells: Cells): { w: number; h: number; minR: number; mi
 
 // The figure's own narrowest achievable cross-section, across all 4 rotations --
 // this is the minimum corridor width it can ever be delivered through, no matter
-// how it's finally oriented once it arrives.
+// how it's finally oriented once it arrives. Memoized by normalized shape: this sits
+// on the engine's per-candidate hot path (deliveryReachable calls it for every
+// candidate anchor), and getOrientations is far too expensive to rerun each time
+// (2026-11-18 perf regression: decidePlacement 0.45s → 6.9s before this memo).
+const minPassableWidthCache = new Map<string, number>()
+const MIN_PASSABLE_WIDTH_CACHE_CAP = 500
+
 export function minPassableWidth(cells: Cells): number {
+  // Normalize to the bbox origin BEFORE keying: placements arrive as absolute
+  // (translated) copies of the same orientation — keying the raw cells would give a
+  // distinct cache key per anchor and the memo would never hit.
+  const { minR, minC } = bboxSize(cells)
+  const norm = cells.map(([r, c]) => [r - minR, c - minC] as [number, number])
+  const key = shapeSignature(norm)
+  const cached = minPassableWidthCache.get(key)
+  if (cached != null) return cached
   let best = Infinity
-  for (const ori of getOrientations(cells)) {
+  for (const ori of getOrientations(norm)) {
     const { w, h } = bboxSize(ori)
     best = Math.min(best, w, h)
   }
+  if (minPassableWidthCache.size >= MIN_PASSABLE_WIDTH_CACHE_CAP) minPassableWidthCache.clear()
+  minPassableWidthCache.set(key, best)
   return best
 }
 
 // Returns reachable CELLS (not columns) so a caller can check a specific target cell,
 // not just "is this cell's column reachable somewhere" — needed since 2026-09-09's fix
 // made reachability a per-run (not per-column) property (see reachableCells above).
+// Memoized by (board, width): hasTurningPocketNear probes it for every delivery-rejected
+// candidate, always with the same board and the figure's minPassableWidth.
+const widthReachCache = new Map<string, Set<string>>()
+const WIDTH_REACH_CACHE_CAP = 200
+
 function reachableCellsForWidth(filled: Set<string>, rows: number, width: number): Set<string> {
+  const cacheKey = `${rows}|${[...filled].sort().join(';')}|${width}`
+  const cached = widthReachCache.get(cacheKey)
+  if (cached) return cached
   const base = reachableCells(filled, rows)
   if (width <= 1) return base
   // Is a `width`x`width` probe box, top-left anchored at (r,c), entirely clear?
@@ -489,6 +537,8 @@ function reachableCellsForWidth(filled: Set<string>, rows: number, width: number
   base.forEach(key => {
     if (wideCells.has(key)) out.add(key)
   })
+  if (widthReachCache.size >= WIDTH_REACH_CACHE_CAP) widthReachCache.clear()
+  widthReachCache.set(cacheKey, out)
   return out
 }
 
@@ -520,32 +570,85 @@ function reachableCellsForWidth(filled: Set<string>, rows: number, width: number
 // F21 gets the exact same all-cells-required square it always did, zero behavior change there.
 // Re-verified against both of Sergey's full historical games plus this new one: zero
 // regressions, F21's well bug still rejected, and this fixes F19.
-function reachableCellsForShape(filled: Set<string>, rows: number, cells: Cells): Set<string> {
-  const base = reachableCells(filled, rows)
-  const width = minPassableWidth(cells)
-  if (width <= 1) return base
+// DELIVERY MODEL (reworked 2026-11-18, refined 2026-11-19 per Sergey's F11 ruling
+// «для F11 достаточно 2 ячеек» — case 11C5A7 rejected by the old envelope standard).
+// The "vertically grounded = exempt from all delivery checks" rule is GONE (it let a
+// fully floor-stacked figure skip the passage check entirely — on the (3)-report board
+// the engine delivered the V-pentomino F17 into the pocket right of B12: the only way
+// down there is a 2-cell-wide passage, while F17's own cells span 3 columns in every
+// orientation («в 2-клеточный колодец нельзя опустить тело шириной 3 клетки», same
+// standard as the F21 well). 24C11A12 is genuinely deliverable WITHOUT any exemption:
+// the T slides along the open floor and its tall stem never crosses the lintel column.
+//
+// Final model (matches every ruling to date):
+//  • TRANSIT: the figure slides as a rigid body one cell at a time from the A0 entrance;
+//    at every INTERMEDIATE position its OWN CELLS — plus every TRULY ENCLOSED gap of its
+//    silhouette (an empty bbox pocket not connected to the bbox boundary through empty
+//    cells; nothing solid can enter or leave such a pocket while the body slides) — must
+//    stay clear of material. OPEN silhouette gaps (edge/corner notches like the
+//    W-staircase's or the F19 arch's under-gap) may pass OVER material: a rigid staircase
+//    slides through a 2-cell-wide stepped channel (Sergey, 2026-11-19: «для F11 достаточно
+//    2 ячейки»), an arch straddles a pillar. A SOLID cross-section still needs its width:
+//    F17's V and the F21 well stay rejected. The ≤3-step run model still gates the cells
+//    (base intersection).
+//  • ARRIVAL: the place of installation needs only the figure's OWN cells empty (arrival
+//    is stacking, not traveling) — under this transit model the target anchor is just the
+//    last BFS position, so no separate adjacency rule is needed anymore (the old
+//    envelope-overlap-at-arrival case 24C11A12 is now plain reachable transit).
+//  • Grounded placements no longer bypass anything: a floor stack still has to be
+//    DELIVERABLE (this is what rejects F17@17C14A12 while keeping 24C11A12 legal).
+// Module-level memo for the shape BFS: within one planning pass the SAME
+// (board, orientation) pair is probed repeatedly (alive-figures, option counts,
+// flexibility), so the expensive per-shape flood is cached by exact board and
+// normalized shape content. Bounded; pure performance plumbing, no semantics.
+const shapeReachCache = new Map<string, Set<string>>()
+const SHAPE_REACH_CACHE_CAP = 400
+
+function shapeSignature(cells: Cells): string {
+  return JSON.stringify([...cells].sort((a, b) => a[0] - b[0] || a[1] - b[1]))
+}
+
+// Silhouette-gated transit BFS: returns every ANCHOR (top-left bbox position) the figure
+// can slide to from the entrance with only its own cells (+ enclosed silhouette pockets)
+// staying clear. Memoized per (board, normalized orientation). Pure helper of deliveryReachable.
+function envelopeTransitAnchors(filled: Set<string>, rows: number, cells: Cells): Set<string> {
+  const cacheKey = `${rows}|${[...filled].sort().join(';')}|${shapeSignature(cells)}`
+  const cached = shapeReachCache.get(cacheKey)
+  if (cached) return cached
   const { minR, minC, w, h } = bboxSize(cells)
   const figureSet = new Set(cells.map(([r, c]) => cellKey(r - minR, c - minC)))
-  // Which bbox cells actually need to stay empty during transit: every real figure cell,
-  // plus every non-figure bbox cell EXCEPT one that's strictly enclosed (same row or same
-  // column) between two real figure cells -- a true hole in the figure's own footprint.
-  const required: [number, number][] = []
+  // Which bbox cells must stay clear during transit: every real figure cell, plus every
+  // non-figure bbox cell that is NOT connected to the bbox boundary through empty bbox
+  // cells (a truly enclosed pocket — nothing solid can enter or leave it while the rigid
+  // body slides). Open edge/corner gaps (staircase notches, arch under-gaps) are exempt:
+  // they may pass over material (F11 staircase through a 2-wide stepped channel, F19 arch
+  // straddling a pillar — Sergey 2026-11-19).
+  const required: [number, number][] = [...figureSet].map(k => {
+    const [lr, lc] = k.split(',').map(Number)
+    return [lr, lc] as [number, number]
+  })
+  const openGap = new Set<string>()
+  const gapQueue: [number, number][] = []
   for (let lr = 0; lr < h; lr++) {
-    let minC_row = Infinity, maxC_row = -Infinity
     for (let lc = 0; lc < w; lc++) {
-      if (figureSet.has(cellKey(lr, lc))) { minC_row = Math.min(minC_row, lc); maxC_row = Math.max(maxC_row, lc) }
+      const k = cellKey(lr, lc)
+      if (figureSet.has(k) || openGap.has(k)) continue
+      const onBoundary = lr === 0 || lc === 0 || lr === h - 1 || lc === w - 1
+      if (onBoundary) { openGap.add(k); gapQueue.push([lr, lc]) }
     }
+  }
+  for (let qi = 0; qi < gapQueue.length; qi++) {
+    const [lr, lc] = gapQueue[qi]
+    for (const [nr, nc] of [[lr - 1, lc], [lr + 1, lc], [lr, lc - 1], [lr, lc + 1]] as [number, number][]) {
+      const k = cellKey(nr, nc)
+      if (nr < 0 || nc < 0 || nr >= h || nc >= w || figureSet.has(k) || openGap.has(k)) continue
+      openGap.add(k)
+      gapQueue.push([nr, nc])
+    }
+  }
+  for (let lr = 0; lr < h; lr++) {
     for (let lc = 0; lc < w; lc++) {
-      if (figureSet.has(cellKey(lr, lc))) { required.push([lr, lc]); continue }
-      const rowEnclosed = lc > minC_row && lc < maxC_row
-      if (rowEnclosed) continue
-      let minR_col = Infinity, maxR_col = -Infinity
-      for (let rr = 0; rr < h; rr++) {
-        if (figureSet.has(cellKey(rr, lc))) { minR_col = Math.min(minR_col, rr); maxR_col = Math.max(maxR_col, rr) }
-      }
-      const colEnclosed = lr > minR_col && lr < maxR_col
-      if (colEnclosed) continue
-      required.push([lr, lc]) // an edge/corner gap, not enclosed -- stays part of the envelope
+      if (!figureSet.has(cellKey(lr, lc)) && !openGap.has(cellKey(lr, lc))) required.push([lr, lc])
     }
   }
   function shapeOpen(ar: number, ac: number): boolean {
@@ -571,16 +674,123 @@ function reachableCellsForShape(filled: Set<string>, rows: number, cells: Cells)
     const [ar, ac] = queue[qi]
     tryVisit(ar - 1, ac); tryVisit(ar + 1, ac); tryVisit(ar, ac - 1); tryVisit(ar, ac + 1)
   }
-  const shapeCells = new Set<string>()
-  visited.forEach(key => {
-    const [ar, ac] = key.split(',').map(Number)
-    cells.forEach(([r, c]) => shapeCells.add(cellKey(ar + (r - minR), ac + (c - minC))))
+  if (shapeReachCache.size >= SHAPE_REACH_CACHE_CAP) shapeReachCache.clear()
+  shapeReachCache.set(cacheKey, visited)
+  return visited
+}
+
+// The delivery question for ONE concrete placement (see the model comment above):
+// true iff the figure can be brought from the A0 entrance to exactly this position.
+// Preconditions: `cells` inside the container, non-colliding (checked by the caller);
+// postconditions: pure query, no board mutation; invariant: never relaxes the ≤3-step
+// run model (base intersection) or the envelope transit standard.
+// `pre` lets hot callers (the engine's move generator) supply the per-board/per-shape
+// artifacts once instead of rebuilding cache keys for every candidate anchor.
+function deliveryReachableCore(cells: Cells, rows: number, base: Set<string>, visited: Set<string>): boolean {
+  // A figure whose narrowest achievable cross-section is 1 can reach anywhere the run
+  // model allows (unchanged legacy behavior: thin cargo never needs a wider corridor).
+  if (minPassableWidth(cells) <= 1) return cells.every(([r, c]) => base.has(cellKey(r, c)))
+  if (!cells.every(([r, c]) => base.has(cellKey(r, c)))) return false
+  const { minR, minC } = bboxSize(cells)
+  const anchor = cellKey(minR, minC)
+  // Under the silhouette transit model the target anchor is just the last BFS position:
+  // its own cells are guaranteed empty (non-colliding precondition), so it is reachable
+  // exactly when the transit BFS visited it (entrance column 0 anchors are seeded in).
+  return visited.has(anchor)
+}
+
+export function deliveryReachable(filled: Set<string>, rows: number, cells: Cells): boolean {
+  return deliveryReachableCore(cells, rows, reachableCells(filled, rows), envelopeTransitAnchors(filled, rows, cells))
+}
+
+// Sergey, 2026-11-19 (report (5), live case 11E11C13, canon rule text): «Опускать груз
+// с больших ступеней для уменьшения их высоты, грузчик может, перегнувшись на три
+// ступени, так чтобы было возможно установить его без бросания.» The sliding-transit
+// model above answers only how cargo TRAVELS on its own; this rule answers how cargo is
+// INSTALLED next to the loader: standing anywhere the run model lets him (reachableCells),
+// he bends over up to three steps and lowers the piece into the neighbouring pit —
+// including cells he cannot stand in himself and cells the piece could never slide to on
+// its own. Two conditions, both from the canon text:
+//   1. «перегнувшись на три ступени» — every cell of the seat (and of the holding
+//      position below) lies within Chebyshev distance ≤3 of some loader-reachable
+//      standing cell. Chebyshev, not Manhattan: bending over a step edge is an arm
+//      reach, and the live case needs it (C13 is 2 down + 2 right of the standing
+//      notch E11 = L1 4, Chebyshev 2).
+//   2. «без бросания» — the piece must arrive by a CONTROLLED slide: some rigid
+//      one-step shift of the seat (an adjacent holding position) is fully empty, so
+//      the final placement is a one-step guided motion, never a free drop.
+// Discriminator against the already-ruled case (report (3), F17@17C14A12 «через
+// проход в две ячейки нельзя»): there every one-step shift collides with B12/the wall
+// (no controlled slide exists), so that placement stays rejected — verified.
+// Anchor footing stays the run model as-is (Sergey, 2026-11-19: «стоя anywhere the
+// run model lets him» — the 25G11E13 shelf case is lowered through shaft cells that
+// have no direct support below; filtering anchors by support broke it). The 44a
+// «выемка… не считается опорой» concern is enforced STRUCTURALLY instead — see
+// hoversOverForbiddenNotch below.
+// Deliberately ADDITIVE like hasTurningPocketNear: it only widens acceptance for the
+// specific «lowered from the step edge» case and cannot regress sliding-legal moves.
+function loaderLoweringReachable(filled: Set<string>, rows: number, cells: Cells): boolean {
+  const stand = reachableCells(filled, rows)
+  if (!stand.size) return false
+  const withinBend = (pts: Cells): boolean =>
+    pts.every(([r, c]) => {
+      for (let dr = -3; dr <= 3; dr++) {
+        for (let dc = -3; dc <= 3; dc++) {
+          if (stand.has(cellKey(r + dr, c + dc))) return true
+        }
+      }
+      return false
+    })
+  if (!withinBend(cells)) return false
+  const dirs: [number, number][] = [[-1, 0], [1, 0], [0, -1], [0, 1]]
+  return dirs.some(([dr, dc]) => {
+    const hold = cells.map(([r, c]) => [r + dr, c + dc] as [number, number])
+    if (hold.some(([r, c]) => r < 0 || r >= rows || c < 0 || c >= COLS)) return false
+    if (!hold.every(([r, c]) => !filled.has(cellKey(r, c)))) return false
+    return withinBend(hold)
   })
-  const out = new Set<string>()
-  base.forEach(key => {
-    if (shapeCells.has(key)) out.add(key)
-  })
-  return out
+}
+
+// 44a, structural form (Sergey, 2026-11-19, report of 10:31, engine move 16
+// F25@25H1F3: «движок поставил F25 на ступень в 5 ячеек… согласно правилам:
+// “Выемка в сплошной ступени >3-х ячеек не считается опорой для преодоления всей
+// ступени”»): a figure whose bottommost cell in some column hangs in the air ABOVE
+// that column's step, with the step's NOTCH (an empty cell flanked left+right by
+// material) inside the air gap and a solid run of >3 cells beneath the gap, is
+// bridging over the WHOLE step on the notch's airspace — the notch is not a
+// support, so the bridge is illegal. The notch may instead be FILLED («но её можно
+// заложить полученной фигурой»): a figure resting on the step top or seated in the
+// notch is untouched (its bottom cell has material below). Discriminators verified:
+//   - report (6) 25G11E13 stays LEGAL: its only hover (E11 over col 11) sits above
+//     a 1-cell step (A11, run 1 ≤3), and F12 rests ON the col-12 stack top.
+//   - report (5) 11E11C13 stays LEGAL: E11 hovers over the D11 notch whose run
+//     below is 3 cells — 44a covers only steps taller than 3.
+//   - report (11) F25@25H1F3 rejected: G2 hovers over the E2 notch (run A2-D2 = 4).
+// Preconditions: cells non-colliding and in-bounds; postcondition: pure query;
+// invariant: only tightens — it never accepts anything the other channels rejected.
+function hoversOverForbiddenNotch(cells: Cells, filled: Set<string>, rows: number): boolean {
+  const byCol = new Map<number, number>() // column -> the figure's bottommost row there
+  for (const [r, c] of cells) {
+    const cur = byCol.get(c)
+    if (cur == null || r > cur) byCol.set(c, r)
+  }
+  for (const [c, bottom] of byCol) {
+    if (bottom + 1 >= rows) continue
+    if (filled.has(cellKey(bottom + 1, c))) continue // resting in this column — not hovering
+    const gapTop = bottom + 1
+    let st = gapTop
+    while (st < rows && !filled.has(cellKey(st, c))) st++
+    if (st >= rows) continue // the gap runs to the floor — no step is being bridged
+    let run = 0
+    for (let rr = st; rr < rows && filled.has(cellKey(rr, c)); rr++) run++
+    if (run <= 3) continue // 44a covers only steps taller than 3 cells
+    for (let rr = gapTop; rr < st; rr++) {
+      const left = c > 0 && filled.has(cellKey(rr, c - 1))
+      const right = c < COLS - 1 && filled.has(cellKey(rr, c + 1))
+      if (left && right) return true // a notch of the tall step inside the bridged gap
+    }
+  }
+  return false
 }
 
 // Sergey, 2026-09-09 (item 10 follow-up, same rule as the dead-cell "воздушный мешок"
@@ -672,8 +882,7 @@ export function hasDeliveryRoute(filled: Set<string>, rows: number): boolean {
 // (fully boxed in by filled cells / walls) contributed no standing spot the loader
 // could have used — not sealed by this move.
 export function hasReturnPath(filled: Set<string>, rows: number, cells?: Cells): boolean {
-  const reachable = reachableCells(filled, rows)
-  let standingSpots = 0
+  const standing = new Set<string>()
   for (const [r, c] of cells ?? []) {
     // Empty cells orthogonally adjacent to the placed cargo — where the loader stands.
     const neighbors: [number, number][] = [
@@ -682,13 +891,25 @@ export function hasReturnPath(filled: Set<string>, rows: number, cells?: Cells):
     for (const [nr, nc] of neighbors) {
       if (nr < 0 || nr >= rows || nc < 0 || nc >= COLS) continue
       if (filled.has(cellKey(nr, nc))) continue // not a standing spot — solid cargo
-      standingSpots++
-      if (reachable.has(cellKey(nr, nc))) return true
+      standing.add(cellKey(nr, nc))
     }
   }
   // No empty adjacent cell at all: the placement never offered the loader a spot at
   // the place of installation, so it can't be the thing that trapped him.
-  return standingSpots === 0
+  if (standing.size === 0) return true
+  // 44d semantics: the loader must be able to WALK BACK TO THE A0 EXIT under the
+  // ≤3-step rule — that is exactly the column-0-seeded run model
+  // (reachableCells: runs, ≤3 shelf bridges, notches as non-waypoints). A raw
+  // sky-side flood is NOT equivalent (an earlier perf optimization flooded from
+  // the open top row, which let the engine bury the entrance with a 4-step and
+  // keep "returning" — Sergey, 2026-11-18 medium game: F21 21B1D0 sealed col 0,
+  // then F22 was «спокойно перенесён» to the far end). reachableCells is cheap
+  // here: the run propagation is memoized per board signature in rules.ts.
+  const reachable = reachableCells(filled, rows)
+  for (const spot of standing) {
+    if (reachable.has(spot)) return true
+  }
+  return false
 }
 
 // RULE FIX (TO_DO 44g, Official_Rules.docx «Ограничения»: «Пустоты в контейнере...
@@ -764,11 +985,23 @@ export function closedCols(filled: Set<string>, rows: number, deadCells?: Set<st
 // attempts a real placement and checkPlacement (a real-time check, not a permanence claim)
 // is the only judge of whether THIS attempt, right now, succeeds.
 export function computeDeadCells(filled: Set<string>, rows: number): Set<string> {
+  // 44f («Ячейка считается «мёртвой», если она закрыта со всех сторон») — the container's
+  // boundary is CLOSED on every side (walls, floor AND the ceiling — Sergey, 2026-11-19,
+  // report of 00:03: after the engine's F04@04K9H9 the ceiling-adjacent pockets left of
+  // the col-12 wall were not marked dead: «не отметил «мёртвые» ячейки — сверху закрыто
+  // потолком»). The only OPENING is the entrance at the bottom of column 0, so an empty
+  // region is fillable exactly when it connects to column 0's air through empty cells;
+  // everything else is dead. This also honors the 2026-11-19 canon «пока есть хоть
+  // какой-то проход, даже только для mono — ряд не считается мёртвым»: a cave with any
+  // empty-cell path from the entrance column stays alive regardless of step heights
+  // (pure geometry; practical reachability is the engine's pocketStranding concern).
+  // Historical note: the flood used to seed the TOP row (an open-sky fiction) — it both
+  // missed ceiling-sealed regions and wrongly killed entrance-connected caves.
   const DIRS: [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1]]
   const open = new Set<string>()
   const stack: string[] = []
-  for (let c = 0; c < COLS; c++) {
-    const key = cellKey(0, c)
+  for (let r = 0; r < rows; r++) {
+    const key = cellKey(r, 0)
     if (!filled.has(key)) { open.add(key); stack.push(key) }
   }
   while (stack.length) {
@@ -836,19 +1069,31 @@ export function checkPlacement(cells: Cells | null, filled: Set<string>, rows: n
   // sealed off genuinely-open low cells sitting under an unrelated tall stack.)
   // A cell that is VERTICALLY GROUNDED (see verticallyGroundedCells below -- rests on
   // the floor, on pre-existing material directly below it in the SAME column, or on
-  // another cell of this same placement directly below it, transitively) is just plain
-  // contiguous stacking -- it is never "traveling" anywhere, so neither the step-height
-  // cap nor the corridor-width probe below apply to it. Computed once, reused by both
-  // checks (also referenced by the 2026-09-10 step-cap fix further down).
+  // another cell of this same placement directly below it, transitively) still needs a
+  // DELIVERY ROUTE: the old blanket exemption («contiguous stacking is never traveling»)
+  // let the engine set F17 through a 2-cell passage beside B12 (Sergey, 2026-11-18,
+  // report (3): «установлена F17 на 17C14A12 через проход в две ячейки»). The grounding
+  // set is kept ONLY for the shelf cap further down (no climbing gear for a sideways
+  // reach); the delivery question itself is answered by deliveryReachable — envelope
+  // transit + own-cells arrival, see the model comment above it.
   const vGroundedEarly = verticallyGroundedCells(cells, filled, rows)
   const minWidth = minPassableWidth(cells)
-  const reachableNow = reachableCellsForShape(filled, rows, cells)
-  const fitsDirectly = cells.every(([r, c]) => vGroundedEarly.has(cellKey(r, c)) || reachableNow.has(cellKey(r, c)))
-  if (!fitsDirectly && !hasTurningPocketNear(cells, filled, rows)) {
+  const fitsDirectly = deliveryReachable(filled, rows, cells)
+  if (!fitsDirectly && !hasTurningPocketNear(cells, filled, rows) && !loaderLoweringReachable(filled, rows, cells)) {
     const reason = minWidth > 1
       ? `Cargo can’t reach this spot — this figure needs a ${minWidth}-cell-wide passage and none reaches here (or a step taller than 3 cells blocks the path)`
       : 'Cargo can’t reach this spot — a step taller than 3 cells blocks the path from the entrance (build an intermediate step first)'
     return { ok: false, reason, cells }
+  }
+  // 44a (Sergey, 2026-11-19, report of 10:31, engine F25@25H1F3): the notch of a
+  // >3-cell solid step is not a support — a piece may not bridge over the whole step
+  // hovering above the notch; it must rest on the step or fill the notch instead.
+  if (hoversOverForbiddenNotch(cells, filled, rows)) {
+    return {
+      ok: false,
+      reason: 'Per rule 44a, a notch in a solid step taller than 3 cells is not a support — the piece may not bridge over it without filling the notch',
+      cells,
+    }
   }
   // BUG FIX (Sergey, 2026-09-10): the run-based model above deliberately treats an
   // ENTIRE open run as reachable once its shelf matches the usual +/-3 rule (2026-09-09
@@ -869,10 +1114,20 @@ export function checkPlacement(cells: Cells | null, filled: Set<string>, rows: n
   // capped, which is exactly the "no climbing gear" principle already agreed for notches,
   // applied here to bare/under-built columns instead of internal pockets.
   const heights = colHeights(filled, rows)
+  // Shelf-cap exemption (Sergey, 2026-11-19, report (6) case 25G11E13): a RIGID piece
+  // resting on real material (world support) with at most the overhang rule's ordinary
+  // ≤50 % tolerance is held by its bearings — «фигура имела 2 опоры D13 и E12, на
+  // которые приходила большая часть веса» — its unsupported cells dangle by the
+  // piece's own rigidity, not by climbing gear. The 2026-09-10 pillar case that
+  // created this cap stays blocked: there oh = 4/5 = 0.8 > 0.5. NOTE: the blocker for
+  // 25G11E13 was THIS cap, not fair play (oh = 0.429) and not delivery (the lowering
+  // channel passes it) — the cap message was simply shared by both rejection sites.
+  const ohEarly = overhangRatio(cells, filled, rows)
+  const shelfExempt = ohEarly <= 0.5 && hasWorldSupport(cells, filled, rows)
   for (const [r, c] of cells) {
     if (vGroundedEarly.has(cellKey(r, c))) continue
     const shelf = rows - heights[c] - 1
-    if (shelf - r > 3) {
+    if (!shelfExempt && shelf - r > 3) {
       return {
         ok: false,
         reason: 'Cargo can’t reach this spot — a step taller than 3 cells blocks the path from the entrance (build an intermediate step first)',
@@ -880,7 +1135,7 @@ export function checkPlacement(cells: Cells | null, filled: Set<string>, rows: n
       }
     }
   }
-  const oh = overhangRatio(cells, filled, rows)
+  const oh = ohEarly
   // Rule 01 "Support" is a HARD rule with no fair-play exception — distinct from Rule 03
   // "Overhang" below (which tolerates up to 50% unsupported outright, up to 100% via
   // bilateral fair-play). Checked via hasWorldSupport, NOT via oh >= 1 — a figure can be
@@ -910,30 +1165,88 @@ export function checkPlacement(cells: Cells | null, filled: Set<string>, rows: n
 // Brute-force search used by "no legal placement = loss" and by the opponent
 // engine below. Grid is small (≤15×11) so trying every orientation × every
 // anchor cell is cheap.
-export function enumeratePlacements(figure: FigureDef, filled: Set<string>, rows: number, limit = Infinity): Cells[] {
+//
+// Shared placement legality for the two enumeration modes (2026-11-19):
+//  • 'competent' — the opponent engine's move-generator filter (TO_DO 30 plumbing,
+//    2026-11-17): never asks for fair play, never seals its own exit (44d).
+//    Changing a rule means changing checkPlacement; this only reuses its semantics.
+//  • 'honest44e' — per TO_DO 44e («Игроку разрешается располагать грузы согласно
+//    правилам… Запер себя в контейнере — проиграл») a load with >50 % overhang is
+//    still placeable (fair-play-confirmable — the verdict may be «yes»), and a
+//    load that seals the exit is placeable too: the 44d loss is declared AFTER it
+//    lands, not as «нет легальной остановки». Sergey 2026-11-19, report (4)
+//    endgame: the engine's F05 had exactly one placement (05E0A0 in column 0,
+//    exit-sealing) and the system ended the game as a forced pass — premature.
+//    Used ONLY by the forced-pass/loss detection (canPlaceAnywhere) and the
+//    engine's desperate last-resort fallback; never by normal move generation.
+// Optional precomputed artifacts for one enumerateLegal pass: `base` = reachableCells
+// for the CURRENT board (board-constant), `visited` = transit anchors for the
+// CURRENT orientation (orientation-constant). Pure performance plumbing.
+interface DeliveryPre { base: Set<string>; visited: Set<string> }
+
+function placementLegality(cells: Cells, filled: Set<string>, rows: number, pre: DeliveryPre | undefined, mode: 'competent' | 'honest44e'): boolean {
+  if (!inBounds(cells, rows) || collides(cells, filled)) return false
+  // Same delivery model as checkPlacement (see deliveryReachable): silhouette transit +
+  // own-cells arrival, plus the two additive side channels (turning pocket, loader
+  // lowering). The old vertically-grounded exemption is gone — a floor stack must
+  // still be DELIVERABLE (Sergey, 2026-11-18: the engine set F17 through a 2-cell
+  // passage beside B12; the grounded-stacking case 24C11A12 stays legal via arrival).
+  const delivery = pre
+    ? deliveryReachableCore(cells, rows, pre.base, pre.visited)
+    : deliveryReachable(filled, rows, cells)
+  if (!delivery && !hasTurningPocketNear(cells, filled, rows) && !loaderLoweringReachable(filled, rows, cells)) return false
+  // 44a structural notch rule (see hoversOverForbiddenNotch): same rejection as
+  // checkPlacement so the engine's move generator never emits these bridges.
+  if (hoversOverForbiddenNotch(cells, filled, rows)) return false
+  if (!hasWorldSupport(cells, filled, rows)) return false // never a legal move, not even via fair play
+  const ohRatio = overhangRatio(cells, filled, rows)
+  if (mode === 'competent' && ohRatio > 0.5) return false // engine plays fair-play-clean moves only, by design
+  // The 2026-09-10 shelf cap from checkPlacement («нет лестничного снаряжения»):
+  // a placement cell that is not vertically grounded must sit within 3 rows of
+  // its OWN column's current shelf. Without this the move generator could emit
+  // placements checkPlacement itself rejects — Sergey, 2026-11-18 live game:
+  // the engine's F15 at H1/F0 hovered over an empty column 0 (shelf gap 7).
+  // Same rigid-body exemption as checkPlacement (report (6), 25G11E13): world-
+  // supported placements within the ≤50 % overhang tolerance dangle by rigidity.
+  const shelfExempt = ohRatio <= 0.5 // world support already verified above
+  const grounded = verticallyGroundedCells(cells, filled, rows)
+  const heights = colHeights(filled, rows)
+  for (const [r, c] of cells) {
+    if (grounded.has(cellKey(r, c))) continue
+    if (!shelfExempt && rows - heights[c] - 1 - r > 3) return false
+  }
+  if (mode === 'honest44e') return true
+  const nextFilled = new Set(filled)
+  cells.forEach(([rr, cc]) => nextFilled.add(cellKey(rr, cc)))
+  return hasReturnPath(nextFilled, rows, cells)
+}
+
+function isEngineLegal(cells: Cells, filled: Set<string>, rows: number, pre?: DeliveryPre): boolean {
+  return placementLegality(cells, filled, rows, pre, 'competent')
+}
+
+// Enumerates the figure's legal placements in orientation order, stopping at
+// `limit` results or as soon as `accept` says "this one is enough".
+// `mode` (2026-11-19): 'competent' = the engine's normal generator; 'honest44e' =
+// every rules-legal placement including fair-play-confirmable and exit-sealing
+// ones — see placementLegality for the canon source.
+// Preconditions: `rows` matches the active container; postconditions: every
+// returned placement passes placementLegality; invariant: never relaxes game rules.
+function enumerateLegal(figure: FigureDef, filled: Set<string>, rows: number, accept: ((cells: Cells) => boolean) | null, limit: number, mode: 'competent' | 'honest44e' = 'competent'): Cells[] {
   const out: Cells[] = []
-  const orientations = getOrientations(figure.cells)
-  // Same shape-aware, per-cell reachability rule as checkPlacement (see
-  // reachableCellsForShape) -- computed once per ORIENTATION (not per candidate r,c: the
-  // shape BFS only depends on the orientation's own relative cell pattern, translation is
-  // free), reused across every r,c this orientation is tried at.
-  for (const ori of orientations) {
-    const reachableNow = reachableCellsForShape(filled, rows, ori)
+  for (const ori of getOrientations(figure.cells)) {
+    const pre: DeliveryPre = { base: reachableCells(filled, rows), visited: envelopeTransitAnchors(filled, rows, ori) }
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < COLS; c++) {
         const cells = ori.map(([dr, dc]) => [dr + r, dc + c] as [number, number])
-        if (!inBounds(cells, rows) || collides(cells, filled)) continue
-        const fitsDirectly = cells.every(([rr, cc]) => reachableNow.has(cellKey(rr, cc)))
-        if (!fitsDirectly && !hasTurningPocketNear(cells, filled, rows)) continue
-        if (!hasWorldSupport(cells, filled, rows)) continue // never a legal move, not even via fair play
-        const oh = overhangRatio(cells, filled, rows)
-        if (oh > 0.5) continue // engine plays fair-play-clean moves only, by design
-        const nextFilled = new Set(filled)
-        cells.forEach(([rr, cc]) => nextFilled.add(cellKey(rr, cc)))
-        // The engine is a competent player, not a rule: it never seals its own exit
-        // (44d) — and "sealing the exit" is the stricter, more accurate statement of
-        // the old hasDeliveryRoute filter, so the engine's move quality only improves.
-        if (!hasReturnPath(nextFilled, rows, cells)) continue
+        if (!placementLegality(cells, filled, rows, pre, mode)) continue
+        // Existence mode: `accept` decides, never the fill count — with limit=1
+        // the fill-count check alone would return the FIRST legal placement
+        // even when it does not satisfy accept (a false positive).
+        if (accept != null) {
+          if (accept(cells)) return [cells]
+          continue
+        }
         out.push(cells)
         if (out.length >= limit) return out
       }
@@ -942,12 +1255,40 @@ export function enumeratePlacements(figure: FigureDef, filled: Set<string>, rows
   return out
 }
 
-/** Checks whether a figure has any legal placement without materializing every option.
- * Preconditions: `rows` matches the active container; postcondition: uses the same
- * legality checks as `enumeratePlacements`; invariant: never relaxes game rules.
+export function enumeratePlacements(figure: FigureDef, filled: Set<string>, rows: number, limit = Infinity): Cells[] {
+  return enumerateLegal(figure, filled, rows, null, limit)
+}
+
+/** Checks whether the figure has any HONESTLY legal placement (44e): includes
+ * fair-play-confirmable (>50 % overhang, verdict pending) and exit-sealing loads —
+ * the loss they cause is declared by 44d AFTER the load lands, never as a forced
+ * pass while a rules-legal move exists. Sergey 2026-11-19, report (4): the
+ * engine's last F05 could still be placed at 05E0A0 (column 0, exit-sealing) but
+ * the competent filter hid it and the game ended «как сдача».
+ * Preconditions: `rows` matches the active container; postcondition: pure query;
+ * invariant: never relaxes game rules — only the 44e placement right.
  */
 export function canPlaceAnywhere(figure: FigureDef, filled: Set<string>, rows: number): boolean {
-  return enumeratePlacements(figure, filled, rows, 1).length > 0
+  return enumerateLegal(figure, filled, rows, null, 1, 'honest44e').length > 0
+}
+
+/** All honestly legal placements in 'competent'-unreachable situations: the
+ * engine's desperate last-resort list (fair-play-pending and exit-sealing loads
+ * included). Normal move generation keeps using enumeratePlacements.
+ * Preconditions: `rows` matches the active container; postcondition: pure query.
+ */
+export function enumerateAllLegal(figure: FigureDef, filled: Set<string>, rows: number, limit = Infinity): Cells[] {
+  return enumerateLegal(figure, filled, rows, null, limit, 'honest44e')
+}
+
+/** True iff the figure has at least one legal placement covering `target`.
+ * Used by the opponent engine's floor-flexibility metric (TO_DO 30d, 2026-11-17:
+ * "держать колонку 14 до последнего — А13 можно закрыть только с помощью F01").
+ * Preconditions: `target` inside the container; postconditions: same legality as
+ * enumeratePlacements; invariant: pure query, no board mutation.
+ */
+export function canPlaceCovering(figure: FigureDef, filled: Set<string>, rows: number, target: { r: number; c: number }): boolean {
+  return enumerateLegal(figure, filled, rows, (cells) => cells.some(([r, c]) => r === target.r && c === target.c), 1).length > 0
 }
 
 // Placement-quality heuristic for the opponent engine. Earlier version only rewarded
