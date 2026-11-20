@@ -109,3 +109,45 @@ export function useActiveNews(limit = 12): {
 
   return { items, error }
 }
+
+/** Feature flags for the play page, read from the admin-editable app_config table
+ * (TO_DO 31). Only keys prefixed `game.` are public (migration 20261120100000);
+ * anything else stays admin-only and invisible here.
+ * Preconditions: RLS allows public SELECT on `key like 'game.%'`.
+ * Postconditions: failures/absent rows degrade to the documented defaults —
+ * timers off, UnderLodar, easy engine. Never throws.
+ * Invariants: read-only consumer; the admin CONFIG VARIABLES section owns writes. */
+export interface GameFlags {
+  timersEnabled: boolean
+  tierId: number
+  difficulty: "easy" | "medium" | "hard"
+}
+
+/** Defaults when the config rows are missing or unreadable (Sergey, 2026-11-20:
+ * timers are OFF for the MVP play page — time is unlimited at the first tiers). */
+const GAME_FLAGS_DEFAULT: GameFlags = { timersEnabled: false, tierId: 1, difficulty: "easy" }
+
+/** Read the `game.*` flags once per mount. Pure public read; see GameFlags. */
+export function useGameFlags(): GameFlags {
+  const [flags, setFlags] = useState<GameFlags>(GAME_FLAGS_DEFAULT)
+  useEffect(() => {
+    let cancelled = false
+    supabase
+      .from("app_config")
+      .select("key, value")
+      .like("key", "game.%")
+      .then(({ data }) => {
+        if (cancelled || data === null) return
+        const byKey = new Map((data as { key: string; value: string | null }[]).map(r => [r.key, r.value ?? ""]))
+        const tier = Number(byKey.get("game.tier_id") ?? "")
+        const diff = byKey.get("game.difficulty")
+        setFlags({
+          timersEnabled: byKey.get("game.timers_enabled") === "1",
+          tierId: Number.isFinite(tier) && tier >= 1 && tier <= 7 ? tier : GAME_FLAGS_DEFAULT.tierId,
+          difficulty: diff === "medium" || diff === "hard" ? diff : GAME_FLAGS_DEFAULT.difficulty,
+        })
+      })
+    return () => { cancelled = true }
+  }, [])
+  return flags
+}

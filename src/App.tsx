@@ -13,7 +13,7 @@ import {
   storeMusicOn,
   useSiteMusic,
 } from './lib/useSiteMusic'
-import { useActiveNews, useMusicOverrides } from './lib/siteContent'
+import { useActiveNews, useGameFlags, useMusicOverrides } from './lib/siteContent'
 
 // Supabase's auth emails (confirm signup / password recovery / email change) redirect
 // back to this app with a `type` param in the URL hash (implicit flow) or query string
@@ -1418,191 +1418,27 @@ function LorePage() {
   )
 }
 
-// ── Play/Practice shared data ─────────────────────────────────────────────────
-const LOADED_IDS = new Set([1, 2, 3, 6, 7, 8, 12, 13, 14])
-const SAMPLE_HISTORY = [
-  { who: 'You', notation: '03A2B3', turn: 1 },
-  { who: 'Opp', notation: '07A0B1', turn: 2 },
-  { who: 'You', notation: '14A5B5', turn: 3 },
-  { who: 'Opp', notation: '05A10B14', turn: 4 },
-  { who: 'You', notation: '01A7', turn: 5 },
-  { who: 'Opp', notation: '08B1C2', turn: 6 },
-]
+// TO_DO 31 (2026-11-20): the mock Play/Practice data (PLAY_CELLS, OPP_CELLS,
+// SAMPLE_HISTORY, LOADED_IDS) is retired — the play page renders the real game.
 
-function buildPlayCells() {
-  const s = new Set<string>()
-  for (let c = 0; c < 15; c++) s.add(`9,${c}`)
-  for (let c = 0; c <= 5; c++) s.add(`8,${c}`)
-  for (let c = 8; c <= 14; c++) s.add(`8,${c}`)
-  for (let c = 0; c <= 2; c++) s.add(`7,${c}`)
-  for (let c = 12; c <= 14; c++) s.add(`7,${c}`)
-  return s
-}
-const PLAY_CELLS = buildPlayCells()
-const PLAY_CLOSED = new Set([9])
-
-function buildOppCells() {
-  const s = new Set<string>()
-  for (let c = 0; c < 15; c++) s.add(`9,${c}`)
-  for (let c = 0; c < 15; c++) s.add(`8,${c}`)
-  for (let c = 2; c <= 11; c++) s.add(`7,${c}`)
-  for (let c = 4; c <= 9; c++) s.add(`6,${c}`)
-  return s
-}
-const OPP_CELLS = buildOppCells()
-const OPP_CLOSED = new Set([9, 8])
-
-// ── Play Page (rated | practice) ─────────────────────────────────────────────
-function PlayPage({ mode = 'rated' }: { mode?: 'rated' | 'practice' }) {
-  const [rotIdx, setRotIdx] = useState(0)
-  const [notation, setNotation] = useState('')
-  const { t } = useLang()
-  const incomingFig = FIGURES[15]
-  const orientations = getOrientations(incomingFig.cells)
-  const curOri = orientations[rotIdx % orientations.length]
-  const isPractice = mode === 'practice'
-
-  return (
-    <div style={{ background: C.graphite, minHeight: '100vh', paddingTop: '3.5rem' }}>
-      {/* Status bar */}
-      <div style={{ background: C.graphite2, borderBottom: `1px solid ${C.cyan}22` }}
-        className="px-4 md:px-6 py-3 flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-4 flex-wrap">
-          <span style={{ background: `${C.cyan}22`, color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, padding: '3px 10px' }}>
-            {isPractice ? t('TRAINING SESSION') : t('YOUR TURN')}
-          </span>
-          <span style={{ color: C.deck, fontSize: 13 }}>
-            {t('Place')} <span style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace" }}>F16</span>
-          </span>
-          {isPractice && (
-            <span style={{ background: `${C.steelDim}30`, color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 10, padding: '3px 10px' }}>{t('UNRATED')}</span>
-          )}
-        </div>
-        <div className="flex items-center gap-5 flex-wrap">
-          <span style={{ color: C.steelDim, fontSize: 12, fontFamily: "'JetBrains Mono',monospace" }}>{isPractice ? t('PRACTICE') : t('RATED')}</span>
-          <span style={{ color: C.steelDim, fontSize: 12, fontFamily: "'JetBrains Mono',monospace" }}>{t('Move {n}', { n: 7 })}</span>
-          <span style={{ color: C.steel, fontSize: 13 }}>{t('vs')} <span style={{ color: C.deck }}>{isPractice ? t('engine') : 'nikolai_k'}</span></span>
-          {!isPractice && (
-            <div style={{ background: `${C.green}22`, color: C.green, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, padding: '3px 10px' }}>⏱ 5:42</div>
-          )}
-        </div>
-      </div>
-
-      <div className="max-w-7xl mx-auto px-4 py-5 grid lg:grid-cols-[1fr_300px] gap-5">
-        <div className="flex flex-col gap-5">
-          {/* Your container */}
-          <div style={{ border: `1px solid ${C.cyan}30`, background: C.graphite2 }} className="p-4">
-            <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
-              <div className="flex items-center gap-4">
-                <span style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>{t('YOUR CONTAINER')}</span>
-                <span style={{ color: C.steelDim, fontSize: 11, fontFamily: "'JetBrains Mono',monospace" }}>15×10</span>
-              </div>
-              <div className="flex items-center gap-4 text-xs flex-wrap">
-                {[
-                  { label: t('Placed'), fill: `${C.blue}18`, border: C.blue },
-                  { label: t('Row closed'), fill: `${C.green}22`, border: C.green },
-                  { label: t('Entry A0'), fill: `${C.cyan}18`, border: C.cyan },
-                ].map(l => (
-                  <span key={l.label} className="flex items-center gap-1.5" style={{ color: C.steelDim }}>
-                    <span style={{ display: 'inline-block', width: 12, height: 12, background: l.fill, border: `1.5px solid ${l.border}` }} />
-                    {l.label}
-                  </span>
-                ))}
-              </div>
-            </div>
-            <div className="overflow-x-auto">
-              <ContainerGrid filledCells={PLAY_CELLS} closedRows={PLAY_CLOSED} cellSize={26} rows={10} />
-            </div>
-          </div>
-
-          {/* Opponent container */}
-          <div style={{ border: `1px solid ${C.steelDim}25`, background: C.graphite2 }} className="p-4">
-            <div className="flex items-center gap-4 mb-3">
-              <span style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>
-                {t('OPPONENT — {name}', { name: isPractice ? t('engine') : 'nikolai_k' })}
-              </span>
-              <span style={{ color: C.steelDim, fontSize: 11, fontFamily: "'JetBrains Mono',monospace" }}>15×10 · {t('read-only')}</span>
-            </div>
-            <div className="overflow-x-auto">
-              <ContainerGrid filledCells={OPP_CELLS} closedRows={OPP_CLOSED} cellSize={15} rows={10} />
-            </div>
-          </div>
-
-          {/* Remaining cargo */}
-          <div style={{ border: `1px solid ${C.blue}35`, background: C.graphite2 }} className="p-4">
-            <p style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>
-              {t('YOUR REMAINING CARGO — figures the opponent can still assign you')}
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {FIGURES.map(fig => (
-                <div key={fig.id} title={fig.name}
-                  style={{ border: `1px solid ${LOADED_IDS.has(fig.id) ? C.steelDim + '40' : C.cyan + '40'}`, background: LOADED_IDS.has(fig.id) ? C.graphite : `${C.cyan}10`, opacity: LOADED_IDS.has(fig.id) ? 0.3 : 1 }}>
-                  <FigurePreview cells={fig.cells} cardSize={34} color={LOADED_IDS.has(fig.id) ? C.steelDim : C.cyan} cellPx={6} dots={fig.dots} number={fig.id} />
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Right panel */}
-        <div className="flex flex-col gap-4">
-          {/* Incoming cargo */}
-          <div style={{ border: `1px solid ${C.cyan}40`, background: C.graphite2 }} className="p-5">
-            <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 12 }}>{t('INCOMING CARGO')}</p>
-            <div style={{ background: C.graphite, border: `1px solid ${C.cyan}22`, padding: 14 }} className="flex items-center justify-center mb-4">
-              <FigurePreview cells={curOri} cardSize={90} color={C.cyan} cellPx={16} dots={incomingFig.dots} number={incomingFig.id} />
-            </div>
-            <div className="mb-3">
-              <span style={{ color: C.deck, fontFamily: "'JetBrains Mono',monospace", fontSize: 13 }}>{incomingFig.label} — {incomingFig.name}</span>
-            </div>
-            <div className="flex gap-2 mb-4">
-              {[0, 1, 2, 3].slice(0, orientations.length).map(i => (
-                <button key={i} onClick={() => setRotIdx(i)}
-                  style={{ border: `1px solid ${rotIdx % orientations.length === i ? C.cyan : C.steelDim + '50'}`, background: rotIdx % orientations.length === i ? `${C.cyan}18` : 'transparent', color: rotIdx % orientations.length === i ? C.cyan : C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, padding: '4px 10px' }}>{i * 90}°</button>
-              ))}
-            </div>
-            <p style={{ color: C.steelDim, fontSize: 11, marginBottom: 8 }}>{t('Drag onto your container, or type notation:')}</p>
-            <div className="flex gap-2">
-              <input value={notation} onChange={e => setNotation(e.target.value)} placeholder={t('e.g. B9C10')}
-                style={{ background: C.graphite, border: `1px solid ${C.blue}`, color: C.deck, fontFamily: "'JetBrains Mono',monospace", fontSize: 13, padding: '8px 10px', flex: 1, outline: 'none' }} />
-              <button style={{ background: C.cyan, color: C.graphite, fontWeight: 700, fontSize: 12, padding: '8px 14px' }}>OK</button>
-            </div>
-          </div>
-
-          {/* Request panel */}
-          <div style={{ border: `1px solid ${C.blue}40`, background: C.graphite2 }} className="p-5">
-            <p style={{ color: C.blue, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 6 }}>{t("REQUEST — OPPONENT'S REMAINING POOL")}</p>
-            <p style={{ color: C.steelDim, fontSize: 11, marginBottom: 12 }}>{t('Choose a figure to assign to your opponent. Greyed out = repeat-request restricted.')}</p>
-            <div className="flex flex-wrap gap-2">
-              {FIGURES.filter(f => !LOADED_IDS.has(f.id)).map(fig => (
-                <button key={fig.id} title={`${fig.label} ${fig.name}`}
-                  style={{ border: `1px solid ${C.blue}35`, background: 'transparent', opacity: fig.id === 7 ? 0.3 : 1 }}
-                  disabled={fig.id === 7}>
-                  <FigurePreview cells={fig.cells} cardSize={30} color={C.steelDim} cellPx={5} dots={fig.dots} number={fig.id} />
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Move history */}
-          <div style={{ border: `1px solid ${C.steelDim}25`, background: C.graphite2 }} className="p-5 flex-1">
-            <p style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>{t('MOVE HISTORY')}</p>
-            {SAMPLE_HISTORY.map((m, i) => (
-              <div key={i} className="flex items-center gap-3 py-1.5" style={{ borderBottom: `1px solid ${C.cyan}0a` }}>
-                <span style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 10, minWidth: 16 }}>{m.turn}</span>
-                <span style={{ color: m.who === 'You' ? C.cyan : C.steel, fontSize: 11, minWidth: 28 }}>{t(m.who)}</span>
-                <code style={{ color: m.who === 'You' ? C.deck : C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 12 }}>{m.notation}</code>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  )
+// ── Play Page (TO_DO 31: rated — «Рейтинговую игру возвращаем») ─────────────────
+// The play page is the RATED queue: same workbench layout, everything disabled, no
+// engine — rated matches are played against real people and scheduled by the server
+// (none yet: «У вас нет запланированных игр»). Logged-out visitors get the sign-in gate.
+// The local-engine match lives on the Practice page; timers come from app_config
+// 'game.timers_enabled' (Admin → CONFIG VARIABLES).
+function PlayPage() {
+  const flags = useGameFlags()
+  return <GameWorkbench variant="rated" timersEnabled={flags.timersEnabled} initialTierId={flags.tierId} initialDifficulty={flags.difficulty} />
 }
 
-// ── Practice Page ─────────────────────────────────────────────────────────────
-function PracticePage() { return <PlayPage mode="practice" /> }
+// Practice is the solo self-training mode (Sergey, 2026-11-20: «смысл тренировки — это
+// не игра… сам себе накидываешь»): the same workbench, no opponent, no coin — you pick
+// figures for yourself and place them under the full rules. Same flag source as play.
+function PracticePage() {
+  const flags = useGameFlags()
+  return <GameWorkbench variant="practice" timersEnabled={flags.timersEnabled} initialTierId={flags.tierId} initialDifficulty={flags.difficulty} />
+}
 
 // ── Sandbox Page ──────────────────────────────────────────────────────────────
 function buildSandboxDemo() {
@@ -1779,7 +1615,7 @@ function stepClimbInitialFilled(rows: number): Set<string> {
   return s
 }
 
-function SandboxPage({ setPage: _setPage }: { setPage: (p: Page) => void }) {
+function SandboxPage() {
   const ROWS = 11
   const TOTAL_TUT_STEPS = 10 // content steps 0..9; 10 = completion
   const { lang, t } = useLang()
@@ -1851,7 +1687,6 @@ function SandboxPage({ setPage: _setPage }: { setPage: (p: Page) => void }) {
     } else if (tutStep === 8) {
       setFairPlayDemoPhase('pending')
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, tutStep])
 
   const selectedFig = selectedFigId != null ? FIGURES.find(f => f.id === selectedFigId) ?? null : null
@@ -2972,9 +2807,9 @@ const PP_CYAN: [number, number, number] = [31, 167, 163]
 const PP_GRAPHITE: [number, number, number] = [28, 31, 38]
 const PP_STEEL: [number, number, number] = [120, 128, 143]
 
-const CONTAINER_FIGURE_NOTE = 'Note: after drawing a placed figure in the container, write its figure number inside the shape.'
 // Print&Play paper sheets (TO_DO 40): figures drawn on paper MUST carry their number —
 // canonical footnote in Russian (Sergey's wording) plus the English instruction.
+const CONTAINER_FIGURE_NOTE = 'Note: after drawing a placed figure in the container, write its figure number inside the shape.'
 const CONTAINER_PAPER_FOOTNOTE = 'Наличие номера на фигурах при отрисовке обязательно.'
 
 function drawContainerNote(doc: jsPDF, x: number, y: number, maxWidth: number) {
@@ -4012,60 +3847,75 @@ function logDuration(ms: number): string {
   return `${Math.floor(totalSecInt / 60)}m ${pad2(totalSecInt % 60)}s`
 }
 
-// TO_DO 43 (2026-10-26 numbering): per-player timer panel for the test game page —
+// TO_DO 43: compact per-player timer chip — sits in its container's row right after
+// that container's ScorePanel, so score and clock read in one glance (Sergey,
+// 2026-11-20: the full-width top banner pushed both containers below the fold).
 // "THIS LOAD" = the currently open load window (request received → own request sent),
-// "TOTAL TIME" = the sum of all closed windows. Restarted by resetGame. Preconditions:
-// caller passes live `now` (updated by the 1s tick) so running windows advance; the
-// panel itself is presentation-only, all window bookkeeping lives in DevTestPage.
-function TimerPanel({
-  player, color, startedAt, totalMs, now, label,
+// "TOTAL TIME" = the sum of all closed windows, restarted by resetGame. Preconditions:
+// caller passes live `now` (the shared 1s tick re-renders DevTestPage) so running
+// windows advance; presentation-only, all window bookkeeping lives in DevTestPage.
+function TimerStrip({
+  color, startedAt, totalMs, now, runningHint,
 }: {
-  player: string
   color: string
   startedAt: number | null
   totalMs: number
   now: number
-  label: string
+  runningHint: string
 }) {
   const running = startedAt != null
   const currentMs = startedAt != null ? Math.max(0, now - startedAt) : 0
   const { t } = useLang()
   return (
-    <div style={{ border: `1px solid ${color}40`, background: C.graphite2 }} className="p-4 flex-1">
-      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <span style={{ color, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>{player}</span>
-        <span style={{ color: running ? color : C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 9 }}>
-          {running ? label : t('waiting for a load request…')}
-        </span>
-      </div>
-      <div className="flex gap-4 flex-wrap">
-        <div style={{ flex: '1 1 120px', minWidth: 120 }}>
-          <p style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 9, letterSpacing: '0.05em' }}>{t('THIS LOAD')}</p>
-          <p style={{ color: running ? color : C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 20, fontWeight: 700, lineHeight: 1.2 }}>
-            {running ? logDuration(currentMs) : '—'}
-          </p>
-        </div>
-        <div style={{ flex: '1 1 120px', minWidth: 120 }}>
-          <p style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 9, letterSpacing: '0.05em' }}>{t('TOTAL TIME')}</p>
-          <p style={{ color, fontFamily: "'JetBrains Mono',monospace", fontSize: 20, fontWeight: 700, lineHeight: 1.2 }}>
-            {totalMs + currentMs > 0 ? logDuration(totalMs + currentMs) : '0.0s'}
-          </p>
-        </div>
-      </div>
+    <div title={running ? runningHint : t('waiting for a load request…')}
+      style={{ border: `1px solid ${color}35`, background: `${color}10`, minWidth: 104 }}
+      className="p-2 flex flex-col items-center justify-center gap-1 shrink-0 self-start">
+      <span style={{ color: running ? color : C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 9, letterSpacing: '0.05em' }}>{t('THIS LOAD')}</span>
+      <span style={{ color: running ? color : C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 19, fontWeight: 700, lineHeight: 1 }}>
+        {running ? logDuration(currentMs) : '—'}
+      </span>
+      <span style={{ color, fontFamily: "'JetBrains Mono',monospace", fontSize: 9 }}>{t('TOTAL TIME')} {totalMs + currentMs > 0 ? logDuration(totalMs + currentMs) : '0.0s'}</span>
     </div>
   )
 }
 
-function DevTestPage() {
+// TO_DO 31 (2026-11-20): the game behind the DevTest page and the player-facing Play
+// page is ONE implementation — GameWorkbench — parameterized by variant. 'dev' renders
+// the full control set (qualification, difficulty, engine internals, load timers);
+// 'play' renders the player-facing game: fixed UnderLodar 15×11, easy engine, timers
+// off unless the admin enables app_config 'game.timers_enabled'.
+// Preconditions: variant/timers come from the caller; the caller owns flag reading.
+// Postconditions: identical rule behavior in both variants (single source of truth).
+// Invariants: no variant may present the local engine match as a rated server match.
+function GameWorkbench({
+  variant, timersEnabled, initialTierId, initialDifficulty,
+}: {
+  variant: 'dev' | 'practice' | 'rated'
+  timersEnabled: boolean
+  initialTierId: number
+  initialDifficulty: Difficulty
+}) {
+  const isDev = variant === 'dev'
+  // Practice (Sergey, 2026-11-20, «смысл тренировки — это не игра… сам себе накидываешь»):
+  // no opponent at all — the player picks figures for themselves and places them under
+  // the full rule set (support, steps, overhang/fair-play protocol, return path, dead
+  // cells, closures) for self-assessment. No coin, no opponent container, no engine.
+  // Rated variant (Sergey, 2026-11-20: «Рейтинговую игру возвращаем»): the play page is
+  // the rated queue placeholder — same layout, everything disabled, no engine, until the
+  // server schedules real matches.
+  const isRated = variant === 'rated'
   const { lang, t } = useLang()
   // Qualification (TIERS[0] = UnderLodar) drives container size, not a fixed constant
   // (Sergey, 2026-09-09): UnderLodar plays the training 15×11 container (row K exposed);
   // winning 10 rated matches and passing the exam promotes to Lodar, which plays the
-  // standard competitive 15×10 used by every tier above UnderLodar.
-  const [qualTierId, setQualTierId] = useState<number>(1)
+  // standard competitive 15×10 used by every tier above UnderLodar. The play variant
+  // never renders the selector, so its initial value stays fixed for the whole match.
+  const [qualTierId, setQualTierId] = useState<number>(initialTierId)
   const DEV_ROWS = qualTierId === 1 ? 11 : 10
 
-  const [difficulty, setDifficulty] = useState<Difficulty>('medium')
+  // The play variant fixes the engine difficulty (default easy); the selector that
+  // would change it mid-match is dev-only, so the value stays put for the whole game.
+  const [difficulty, setDifficulty] = useState<Difficulty>(initialDifficulty)
   const engine = useMemo(() => createOpponentEngine({ difficulty }), [difficulty])
 
   const [filledYou, setFilledYou] = useState<Set<string>>(new Set())
@@ -4101,7 +3951,7 @@ function DevTestPage() {
   const [response, setResponse] = useState<string | null>(null)
   // Response/gameOver texts are stored already-translated; the default response
   // is rendered per-language via the fallback below, so the initial state is null.
-  const responseText = response ?? t('Flip the coin to decide who requests first.')
+  const responseText = response ?? t(isRated ? 'You have no scheduled games.' : 'Flip the coin to decide who requests first.')
   const responseIsError = response != null && (
     responseText.startsWith(t('Invalid: {reason}').split('{reason}')[0])
     || responseText.includes(t('opponent declined fair play. Choose a different placement.'))
@@ -4136,6 +3986,9 @@ function DevTestPage() {
   /** Opens a player's current-load window at the instant a load request reaches them. */
   function startLoadTimer(player: 'you' | 'opp') {
     loadStartRef.current[player] = Date.now()
+    // Force a render so the chip flips to "running" in the same frame — the 1s tick
+    // effect alone would only notice on its next dependency change.
+    setTimersTick(t => (t + 1) % 1e9)
   }
 
   /** Closes a player's open window (no-op if none) and banks its elapsed time into their total. */
@@ -4193,11 +4046,10 @@ function DevTestPage() {
   // window is running. Stops entirely when no window is open or the game is
   // over, so idle pages don't burn a render per second.
   useEffect(() => {
-    const anyRunning = loadStartRef.current.you != null || loadStartRef.current.opp != null
-    if (!anyRunning || gameOver) return
+    if (gameOver || requester === null) return
     const id = window.setInterval(() => setTimersTick(t => (t + 1) % 1e9), 1000)
     return () => window.clearInterval(id)
-  }, [gameOver, requester, incomingFigId])
+  }, [gameOver, requester])
 
   // A "pass" event -- a requested figure has nowhere legal to go, or no figure is left
   // that can be requested -- ends the game exactly like a placement does, but wasn't a
@@ -4302,8 +4154,8 @@ function DevTestPage() {
   // Dead/X cells (TO_DO.docx, 2026-09-08): purely geometric — cells with no path of
   // empty cells up to the open top of the container are walled in, period, independent
   // of which figures remain (see rules.ts computeDeadCells for why that's the model).
-  const deadYou = useMemo(() => computeDeadCells(filledYou, DEV_ROWS), [filledYou])
-  const deadOpp = useMemo(() => computeDeadCells(filledOpp, DEV_ROWS), [filledOpp])
+  const deadYou = useMemo(() => computeDeadCells(filledYou, DEV_ROWS), [filledYou, DEV_ROWS])
+  const deadOpp = useMemo(() => computeDeadCells(filledOpp, DEV_ROWS), [filledOpp, DEV_ROWS])
   const closedYou = closedRows(filledYou, DEV_ROWS, deadYou)
   const closedOpp = closedRows(filledOpp, DEV_ROWS, deadOpp)
   const closedYouCols = closedCols(filledYou, DEV_ROWS, deadYou)
@@ -4318,6 +4170,9 @@ function DevTestPage() {
   // panels/headers agree with the end-of-game banner and log line instead of showing a stale tally.
   const displayYouScore = gameOver && gameEndInfo ? gameEndInfo.youScore : closedYouTotal
   const displayOppScore = gameOver && gameEndInfo ? gameEndInfo.oppScore : closedOppTotal
+  // Sergey, 2026-11-20: qualification and difficulty are frozen while a game is in
+  // progress — both selects drive engine/board state and must not change mid-match.
+  const gameInProgress = requester !== null && !gameOver
   // Click-to-fill (item 8 follow-up): two-dot figures need point1+point2, single-dot
   // figures place from one anchor click (using the rotation buttons for orientation).
   const pointsNeeded = incomingFig ? (incomingFig.dots.length >= 2 ? 2 : 1) : 0
@@ -4352,7 +4207,7 @@ function DevTestPage() {
       return { set: undefined, valid: false, outOfBoundsMessage: result.reason }
     }
     return { set: new Set(cells.map(([r, c]) => cellKey(r, c))), valid: result.ok, outOfBoundsMessage: undefined }
-  }, [incomingFig, clickPoints, pointsNeeded, rotIdx, filledYou])
+  }, [incomingFig, clickPoints, pointsNeeded, rotIdx, filledYou, DEV_ROWS])
 
   // Live hover preview for the SECOND point of a two-point figure: once point1 is fixed,
   // only up to 4 orientations remain and usually just 1-2 (or none) are legal — rather than
@@ -4374,7 +4229,7 @@ function DevTestPage() {
     const result = checkPlacement(cells, filledYou, DEV_ROWS)
     if (!result.ok && result.reason === 'Placement goes outside the container') return null
     return { set: new Set(cells.map(([r, c]) => cellKey(r, c))), valid: result.ok }
-  }, [incomingFig, hoverCell, clickPoints, pointsNeeded, filledYou])
+  }, [incomingFig, hoverCell, clickPoints, pointsNeeded, filledYou, DEV_ROWS])
 
   const displayGhost = ghostPlacement ?? hoverPreview
   const ghostCells = displayGhost?.set
@@ -4679,22 +4534,28 @@ function DevTestPage() {
 
   return (
     <div style={{ background: C.graphite, minHeight: '100vh', paddingTop: '3.5rem' }}>
-      <div style={{ background: `${C.red}18`, borderBottom: `1px solid ${C.red}40` }} className="px-4 md:px-6 py-2 text-center">
-        <span style={{ color: C.red, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.06em' }}>
-          {t('DEV / TEST ENVIRONMENT — local engine only, not the production server (TO_DO.docx items 6-8)')}
-        </span>
-      </div>
+      {isDev ? (
+        <div style={{ background: `${C.red}18`, borderBottom: `1px solid ${C.red}40` }} className="px-4 md:px-6 py-2 text-center">
+          <span style={{ color: C.red, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.06em' }}>
+            {t('DEV / TEST ENVIRONMENT — local engine only, not the production server (TO_DO.docx items 6-8)')}
+          </span>
+        </div>
+      ) : (
+        // Honest labeling (hard constraint): the play/practice page never poses as a
+        // rated server match — play says "engine match", practice says self-training.
+        <div style={{ background: `${C.steel}14`, borderBottom: `1px solid ${C.steel}30` }} className="px-4 md:px-6 py-2 text-center">
+          <span style={{ color: C.steel, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, letterSpacing: '0.06em' }}>
+            {t(isRated
+              ? 'RATED MATCHES — played against real people; matches are scheduled by the server and affect your Lodar qualification.'
+              : 'ENGINE MATCH — UNRATED — built-in opponent on the local rules engine; server matches arrive with the multiplayer milestone.')}
+          </span>
+        </div>
+      )}
 
-      {/* TO_DO 43: load timers for each participant — current load window + total of
-          all closed windows. Rendered above the containers so both players' clocks stay
-          visible while placing and while choosing the next request. */}
-      <div className="max-w-7xl mx-auto px-4 pt-5 flex gap-5 flex-col md:flex-row">
-        <TimerPanel player={t('YOU — LOAD TIMER')} color={C.cyan} startedAt={loadStartRef.current.you} totalMs={loadTotals.you} now={Date.now()} label={t('request received — running until you send yours')} />
-        <TimerPanel player={t('OPPONENT — LOAD TIMER')} color={C.steel} startedAt={loadStartRef.current.opp} totalMs={loadTotals.opp} now={Date.now()} label={t('request received — running until they send theirs')} />
-      </div>
-
-      <div className="max-w-7xl mx-auto px-4 py-5 grid lg:grid-cols-[1fr_340px] gap-5">
-        <div className="flex flex-col gap-5 h-full">
+      {/* Sergey, 2026-11-20: three vertical blocks — Я (your container + its panels),
+          Соперник (opponent container + its panels), then the LOG below. Inside a block
+          every panel stretches to the block's common top and bottom edges. */}
+      <div className="max-w-7xl mx-auto px-4 py-5 flex flex-col gap-5">
           {gameOver && (
             <div style={{ border: `1px solid ${C.green}60`, background: `${C.green}18`, color: C.deck }} className="p-4 flex items-center justify-between gap-3">
               <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 13 }}>{gameOver}</span>
@@ -4702,11 +4563,10 @@ function DevTestPage() {
             </div>
           )}
 
-          {/* Each container sits next to the figure bank that actually loads into it — the
-              opponent draws from OPPONENT FIGURES to fill YOUR container, you draw from MY
-              FIGURES to fill the OPPONENT's — so "where to pick from" reads left-to-right
-              instead of needing a mental map back up the page. */}
-          <div className="flex flex-col lg:flex-row gap-5 items-stretch">
+          {/* Block Я: your container, the bank that feeds it (the opponent draws from it
+              to fill YOUR container — "where to pick from" reads left-to-right), and its
+              panels: qualification (frozen mid-game), then the incoming cargo. */}
+          <div className="grid lg:grid-cols-[1fr_260px_340px] gap-5 items-stretch">
             <div style={{ border: `1px solid ${C.cyan}30`, background: C.graphite2 }} className="p-4 flex-1 min-w-0">
               <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
                 <span style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>{t('YOUR CONTAINER — {rows} rows, {n} closed', { rows: DEV_ROWS, n: displayYouScore })}</span>
@@ -4731,8 +4591,8 @@ function DevTestPage() {
                 </p>
               )}
               <div className="flex gap-3 items-start">
-                <div className="overflow-x-auto">
-                  <ContainerGrid filledCells={filledYou} closedRows={closedYou} closedCols={closedYouCols} deadCells={deadYou} cellSize={24} rows={DEV_ROWS}
+                <div className="overflow-x-auto ps-board-wrap">
+                  <ContainerGrid filledCells={filledYou} closedRows={closedYou} closedCols={closedYouCols} deadCells={deadYou} cellSize={24} rows={DEV_ROWS} showJKSeparator
                     onCellHover={incomingFig && !gameOver ? (r, c) => setHoverCell({ r, c }) : undefined}
                     onCellLeave={() => setHoverCell(null)}
                     pieces={piecesYou}
@@ -4740,6 +4600,9 @@ function DevTestPage() {
                     ghostCells={ghostCells} ghostValid={ghostValid} markCells={clickPoints} />
                 </div>
                 <ScorePanel myClosed={displayYouScore} oppClosed={displayOppScore} breakdown={`${closedYou.size}R · ${closedYouCols.size}C`} color={C.cyan} />
+                {timersEnabled && (
+                  <TimerStrip color={C.cyan} startedAt={loadStartRef.current.you} totalMs={loadTotals.you} now={Date.now()} runningHint={t('request received — running until you send yours')} />
+                )}
               </div>
             </div>
 
@@ -4750,18 +4613,86 @@ function DevTestPage() {
                 used: usedForYou.has(fig.id), actionable: true,
                 hint: usedForYou.has(fig.id) ? t('(already placed in your container)') : t('(still available for the opponent to assign you)'),
               })} />
+            <div className="flex flex-col gap-5 h-full min-w-0">
+                <div style={{ border: `1px solid ${C.steel}40`, background: C.graphite2 }} className="p-5">
+                  <p style={{ color: C.steel, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>{t('QUALIFICATION (TEST)')}</p>
+                  <select value={qualTierId} onChange={e => { setQualTierId(Number(e.target.value)); resetGame() }} disabled={isDev ? gameInProgress : true}
+                    title={isDev
+                      ? (gameInProgress ? t('Qualification is frozen while a game is in progress.') : undefined)
+                      : t('Fixed for this mode — qualification plays out on the server in rated matches.')}
+                    style={{ width: '100%', background: C.graphite, border: `1px solid ${C.steel}`, color: C.deck, fontFamily: "'JetBrains Mono',monospace", fontSize: 13, padding: '8px 10px', opacity: (isDev ? gameInProgress : true) ? 0.5 : 1 }}>
+                    {TIERS.map(tier => (
+                      <option key={tier.id} value={tier.id}>{tier.name} — {tier.id === 1 ? t('15×11 (training)') : t('15×10 (competitive)')}</option>
+                    ))}
+                  </select>
+                  <p style={{ color: C.steelDim, fontSize: 11, marginTop: 8 }}>
+                    {t('Container size follows qualification: UnderLodar plays 15×11 (row K exposed); Lodar and above play the standard 15×10. Changing this starts a new game.')}
+                  </p>
+                </div>
+
+
+              {/* Sergey, 2026-11-20: INCOMING CARGO is the work panel — it sits opposite
+                  YOUR CONTAINER, so the figure to load and the container to load it into
+                  are one glance apart. */}
+              <div style={{ border: `1px solid ${C.cyan}40`, background: C.graphite2 }} className="p-5 flex-1 flex flex-col">
+                <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 12 }}>{t('INCOMING CARGO')}</p>
+                {incomingFig ? (
+                  <>
+                    <div style={{ background: C.graphite, border: `1px solid ${C.cyan}22`, padding: 14 }} className="flex items-center justify-center mb-4">
+                      <FigurePreview cells={orientations[rotIdx % orientations.length] ?? incomingFig.cells} cardSize={90} color={C.cyan} cellPx={16} dots={incomingFig.dots} showNumber={false} />
+                    </div>
+                    <p style={{ color: C.deck, fontFamily: "'JetBrains Mono',monospace", fontSize: 13, marginBottom: 10 }}>{incomingFig.label} — {incomingFig.name}</p>
+                    {incomingFig.dots.length < 2 && (
+                      <div className="flex gap-2 mb-3">
+                        {orientations.map((_, i) => (
+                          <button key={i} onClick={() => setRotIdx(i)}
+                            style={{ border: `1px solid ${rotIdx % orientations.length === i ? C.cyan : C.steelDim + '50'}`, background: rotIdx % orientations.length === i ? `${C.cyan}18` : 'transparent', color: rotIdx % orientations.length === i ? C.cyan : C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, padding: '4px 10px' }}>{i * 90}°</button>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <p style={{ color: C.steelDim, fontSize: 12 }}>{t('Nothing requested yet.')}</p>
+                )}
+                <p style={{ color: C.steelDim, fontSize: 11, marginBottom: 8 }}>{t('Request notation, e.g. {ex}:', { ex: '07B9C10' })}</p>
+                <div className="flex gap-2 mb-2">
+                  <input value={notation} onChange={e => setNotation(e.target.value)} disabled={!incomingFig || !!gameOver}
+                    placeholder={t('figure id + point(s)')}
+                    style={{ background: C.graphite, border: `1px solid ${C.blue}`, color: C.deck, fontFamily: "'JetBrains Mono',monospace", fontSize: 13, padding: '8px 10px', flex: 1, outline: 'none', opacity: incomingFig ? 1 : 0.4 }} />
+                  <button onClick={submitPlacement} disabled={!incomingFig || !notation || !!gameOver}
+                    style={{ background: C.cyan, color: C.graphite, fontWeight: 700, fontSize: 12, padding: '8px 14px', opacity: incomingFig && notation && !gameOver ? 1 : 0.4 }}>SUBMIT</button>
+                </div>
+                {fairPlayOffer && (
+                  <div className="flex items-center gap-3 mb-2">
+                    <span style={{ color: C.red, fontFamily: "'JetBrains Mono',monospace", fontSize: 12 }}>{t('{pct}% unsupported', { pct: fairPlayOffer.pct })}</span>
+                    <button onClick={orderFairPlay} disabled={!!gameOver}
+                      style={{ background: C.red, color: '#FFFFFF', fontWeight: 700, fontSize: 12, padding: '8px 14px', opacity: gameOver ? 0.4 : 1 }}>
+                      {t('Order fair play')}
+                    </button>
+                  </div>
+                )}
+                <p style={{ color: C.steelDim, fontSize: 11, marginBottom: 4 }}>{t('Response:')}</p>
+                <input value={responseText} disabled readOnly
+                  style={{ width: '100%', background: C.graphite, border: `1px solid ${responseIsError ? C.red : C.steelDim}40`, color: responseIsError ? C.red : C.steel, fontFamily: "'JetBrains Mono',monospace", fontSize: 12, padding: '8px 10px' }} />
+              </div>
+            </div>
           </div>
 
-          <div className="flex flex-col lg:flex-row gap-5 items-stretch flex-1">
+          {/* Block Соперник: the opponent's container, the bank you request from, and
+              its panels: who enters first, then difficulty (frozen mid-game). */}
+          <div className="grid lg:grid-cols-[1fr_260px_340px] gap-5 items-stretch">
             <div style={{ border: `1px solid ${C.steelDim}25`, background: C.graphite2 }} className="p-4 flex-1 min-w-0 flex flex-col">
               <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
                 <span style={{ color: C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>{t('OPPONENT CONTAINER — {n} closed · {diff}', { n: displayOppScore, diff: t(difficulty.charAt(0).toUpperCase() + difficulty.slice(1)) })}</span>
               </div>
               <div className="flex gap-3 items-start">
-                <div className="overflow-x-auto">
-                  <ContainerGrid filledCells={filledOpp} closedRows={closedOpp} closedCols={closedOppCols} deadCells={deadOpp} cellSize={18} rows={DEV_ROWS} pieces={piecesOpp} />
+                <div className="overflow-x-auto ps-board-wrap">
+                  <ContainerGrid filledCells={filledOpp} closedRows={closedOpp} closedCols={closedOppCols} deadCells={deadOpp} cellSize={18} rows={DEV_ROWS} showJKSeparator pieces={piecesOpp} />
                 </div>
                 <ScorePanel myClosed={displayOppScore} oppClosed={displayYouScore} breakdown={`${closedOpp.size}R · ${closedOppCols.size}C`} color={C.steelDim} />
+                {timersEnabled && (
+                  <TimerStrip color={C.steel} startedAt={loadStartRef.current.opp} totalMs={loadTotals.opp} now={Date.now()} runningHint={t('request received — running until they send theirs')} />
+                )}
               </div>
             </div>
 
@@ -4774,86 +4705,31 @@ function DevTestPage() {
                 const hint = used ? t('(already requested for the opponent)') : fig.id === lastRequestToYou ? t('(repeat-request blocked)') : !actionable ? t('(not your turn to request)') : ''
                 return { used, actionable, hint }
               }} />
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-4 h-full">
-          <div style={{ border: `1px solid ${C.steel}40`, background: C.graphite2 }} className="p-5">
-            <p style={{ color: C.steel, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>{t('QUALIFICATION (TEST)')}</p>
-            <select value={qualTierId} onChange={e => { setQualTierId(Number(e.target.value)); resetGame() }}
-              style={{ width: '100%', background: C.graphite, border: `1px solid ${C.steel}`, color: C.deck, fontFamily: "'JetBrains Mono',monospace", fontSize: 13, padding: '8px 10px' }}>
-              {TIERS.map(tier => (
-                <option key={tier.id} value={tier.id}>{tier.name} — {tier.id === 1 ? t('15×11 (training)') : t('15×10 (competitive)')}</option>
-              ))}
-            </select>
-            <p style={{ color: C.steelDim, fontSize: 11, marginTop: 8 }}>
-              {t('Container size follows qualification: UnderLodar plays 15×11 (row K exposed); Lodar and above play the standard 15×10. Changing this starts a new game.')}
-            </p>
-          </div>
-
-          <div style={{ border: `1px solid ${C.blue}40`, background: C.graphite2 }} className="p-5">
-            <p style={{ color: C.blue, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>{t('OPPONENT DIFFICULTY')}</p>
-            <select value={difficulty} onChange={e => setDifficulty(e.target.value as Difficulty)}
-              style={{ width: '100%', background: C.graphite, border: `1px solid ${C.blue}`, color: C.deck, fontFamily: "'JetBrains Mono',monospace", fontSize: 13, padding: '8px 10px' }}>
-              <option value="easy">{t('Easy (~15% target win rate)')}</option>
-              <option value="medium">{t('Medium (~30% target win rate)')}</option>
-              <option value="hard">{t('Hard (~55% target win rate)')}</option>
-            </select>
-          </div>
-
-          <div style={{ border: `1px solid ${C.cyan}40`, background: C.graphite2 }} className="p-5">
-            <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>{t('WHO ENTERS FIRST')}</p>
-            <button onClick={flipCoin} disabled={coinState === 'spinning' || requester != null}
-              style={{ width: '100%', background: coinState === 'spinning' ? C.steelDim : C.cyan, color: C.graphite, fontWeight: 700, fontSize: 13, padding: '10px', opacity: requester != null ? 0.4 : 1 }}
-              className={coinState === 'spinning' ? 'animate-pulse' : ''}>
-              {coinState === 'spinning' ? t('Flipping… (5s)') : requester != null ? t('Flipped') : t('Flip the coin')}
-            </button>
-          </div>
-
-          <div style={{ border: `1px solid ${C.cyan}40`, background: C.graphite2 }} className="p-5 flex-1 flex flex-col">
-            <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 12 }}>{t('INCOMING CARGO')}</p>
-            {incomingFig ? (
-              <>
-                <div style={{ background: C.graphite, border: `1px solid ${C.cyan}22`, padding: 14 }} className="flex items-center justify-center mb-4">
-                  <FigurePreview cells={orientations[rotIdx % orientations.length] ?? incomingFig.cells} cardSize={90} color={C.cyan} cellPx={16} dots={incomingFig.dots} showNumber={false} />
-                </div>
-                <p style={{ color: C.deck, fontFamily: "'JetBrains Mono',monospace", fontSize: 13, marginBottom: 10 }}>{incomingFig.label} — {incomingFig.name}</p>
-                {incomingFig.dots.length < 2 && (
-                  <div className="flex gap-2 mb-3">
-                    {orientations.map((_, i) => (
-                      <button key={i} onClick={() => setRotIdx(i)}
-                        style={{ border: `1px solid ${rotIdx % orientations.length === i ? C.cyan : C.steelDim + '50'}`, background: rotIdx % orientations.length === i ? `${C.cyan}18` : 'transparent', color: rotIdx % orientations.length === i ? C.cyan : C.steelDim, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, padding: '4px 10px' }}>{i * 90}°</button>
-                    ))}
-                  </div>
-                )}
-              </>
-            ) : (
-              <p style={{ color: C.steelDim, fontSize: 12 }}>{t('Nothing requested yet.')}</p>
-            )}
-            <p style={{ color: C.steelDim, fontSize: 11, marginBottom: 8 }}>{t('Request notation, e.g. {ex}:', { ex: '07B9C10' })}</p>
-            <div className="flex gap-2 mb-2">
-              <input value={notation} onChange={e => setNotation(e.target.value)} disabled={!incomingFig || !!gameOver}
-                placeholder={t('figure id + point(s)')}
-                style={{ background: C.graphite, border: `1px solid ${C.blue}`, color: C.deck, fontFamily: "'JetBrains Mono',monospace", fontSize: 13, padding: '8px 10px', flex: 1, outline: 'none', opacity: incomingFig ? 1 : 0.4 }} />
-              <button onClick={submitPlacement} disabled={!incomingFig || !notation || !!gameOver}
-                style={{ background: C.cyan, color: C.graphite, fontWeight: 700, fontSize: 12, padding: '8px 14px', opacity: incomingFig && notation && !gameOver ? 1 : 0.4 }}>SUBMIT</button>
-            </div>
-            {fairPlayOffer && (
-              <div className="flex items-center gap-3 mb-2">
-                <span style={{ color: C.red, fontFamily: "'JetBrains Mono',monospace", fontSize: 12 }}>{t('{pct}% unsupported', { pct: fairPlayOffer.pct })}</span>
-                <button onClick={orderFairPlay} disabled={!!gameOver}
-                  style={{ background: C.red, color: '#FFFFFF', fontWeight: 700, fontSize: 12, padding: '8px 14px', opacity: gameOver ? 0.4 : 1 }}>
-                  {t('Order fair play')}
+            <div className="flex flex-col gap-5 h-full min-w-0">
+              <div style={{ border: `1px solid ${C.cyan}40`, background: C.graphite2 }} className={`p-5${isDev ? '' : ' flex-1'}`}>
+                <p style={{ color: C.cyan, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>{t('WHO ENTERS FIRST')}</p>
+                <button onClick={flipCoin} disabled={coinState === 'spinning' || requester != null || isRated}
+                  style={{ width: '100%', background: coinState === 'spinning' ? C.steelDim : C.cyan, color: C.graphite, fontWeight: 700, fontSize: 13, padding: '10px', opacity: requester != null ? 0.4 : 1 }}
+                  className={coinState === 'spinning' ? 'animate-pulse' : ''}>
+                  {coinState === 'spinning' ? t('Flipping… (5s)') : requester != null ? t('Flipped') : t('Flip the coin')}
                 </button>
               </div>
-            )}
-            <p style={{ color: C.steelDim, fontSize: 11, marginBottom: 4 }}>{t('Response:')}</p>
-            <input value={responseText} disabled readOnly
-              style={{ width: '100%', background: C.graphite, border: `1px solid ${responseIsError ? C.red : C.steelDim}40`, color: responseIsError ? C.red : C.steel, fontFamily: "'JetBrains Mono',monospace", fontSize: 12, padding: '8px 10px' }} />
-          </div>
 
+              <div style={{ border: `1px solid ${C.blue}40`, background: C.graphite2 }} className="p-5 flex-1">
+                <p style={{ color: C.blue, fontFamily: "'JetBrains Mono',monospace", fontSize: 11, marginBottom: 10 }}>{t('OPPONENT DIFFICULTY')}</p>
+                  <select value={difficulty} onChange={e => setDifficulty(e.target.value as Difficulty)} disabled={variant === 'rated' || gameInProgress}
+                    title={variant === 'rated'
+                      ? t('Fixed for this mode.')
+                      : gameInProgress ? t('Difficulty is frozen while a game is in progress.') : undefined}
+                    style={{ width: '100%', background: C.graphite, border: `1px solid ${C.blue}`, color: C.deck, fontFamily: "'JetBrains Mono',monospace", fontSize: 13, padding: '8px 10px', opacity: (variant === 'rated' || gameInProgress) ? 0.5 : 1 }}>
+                  <option value="easy">{t('Easy (~15% target win rate)')}</option>
+                  <option value="medium">{t('Medium (~30% target win rate)')}</option>
+                  <option value="hard">{t('Hard (~55% target win rate)')}</option>
+                </select>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
 
       {/* LOG lives below the two-column grid, not inside the right-hand column: it's the
           one box that keeps growing as the game goes on, so it can no longer be the thing
@@ -4872,9 +4748,11 @@ function DevTestPage() {
                 style={{ color: moveRecords.length ? C.cyan : C.steelDim, fontSize: 10, fontFamily: "'JetBrains Mono',monospace", textDecoration: 'underline', opacity: moveRecords.length ? 1 : 0.4, cursor: moveRecords.length ? 'pointer' : 'default' }}>
                 {t('Export (PDF)')}
               </button>
-              <button onClick={() => setShowInternals(s => !s)} style={{ color: C.steelDim, fontSize: 10, fontFamily: "'JetBrains Mono',monospace", textDecoration: 'underline' }}>
-                {showInternals ? t('hide engine internals') : t('show engine internals')}
-              </button>
+              {isDev && (
+                <button onClick={() => setShowInternals(s => !s)} style={{ color: C.steelDim, fontSize: 10, fontFamily: "'JetBrains Mono',monospace", textDecoration: 'underline' }}>
+                  {showInternals ? t('hide engine internals') : t('show engine internals')}
+                </button>
+              )}
             </div>
           </div>
           <div className="max-h-64 overflow-y-auto pr-1">
@@ -4888,7 +4766,7 @@ function DevTestPage() {
               </div>
             ))}
           </div>
-          {showInternals && (
+          {isDev && showInternals && (
             <pre style={{ color: C.steelDim, fontSize: 10, marginTop: 8, whiteSpace: 'pre-wrap', borderTop: `1px solid ${C.steelDim}25`, paddingTop: 8 }}>
 {JSON.stringify({ difficulty: engine.difficulty, targetWinRate: engine.targetWinRate, usedForYou: [...usedForYou], usedForOpp: [...usedForOpp], lastRequestToYou, lastRequestToOpp, requester }, null, 2)}
             </pre>
@@ -4897,6 +4775,12 @@ function DevTestPage() {
       </div>
     </div>
   )
+}
+
+// TO_DO 31: the DevTest page keeps the full control set (qualification, difficulty,
+// timers, engine internals) in the dev environment — the same single GameWorkbench.
+function DevTestPage() {
+  return <GameWorkbench variant="dev" timersEnabled={true} initialTierId={1} initialDifficulty="medium" />
 }
 
 // ── Language gate (TO_DO 28) ────────────────────────────────────────────────
@@ -5053,14 +4937,17 @@ function AppShell() {
       {page === 'figures'   && <FiguresPage />}
       {page === 'rules'     && <RulesPage />}
       {page === 'lore'      && <LorePage />}
-      {page === 'play'      && <PlayPage mode="rated" />}
+      {page === 'play'      && (isLoggedIn
+        ? <PlayPage />
+        : <GatedPreview title={t('Sign in to play rated matches')} blurb={t('Rated matches are played against real people and scheduled by the server — sign in to get on the ladder.')}
+            features={[t('Real opponents: every rated match affects your Lodar qualification'), t('Matches are scheduled by the server; your record and rating are kept')]}            setPage={setPage}><PlayPage /></GatedPreview>)}
       {page === 'practice'  && (isLoggedIn
         ? <PracticePage />
         : <GatedPreview title={t('Sign in to play Practice')} blurb={t('Practice runs against the built-in algorithmic engine — unrated, for training. Sign in to unlock it.')}
             features={[t('An unrated match against the algorithmic engine, at your chosen difficulty'), t('The same rules and validation as a real match, with nothing at stake'), t('A live log of every move, with PDF export when the match ends')]}
             setPage={setPage}><PracticePage /></GatedPreview>)}
       {page === 'sandbox'   && (isLoggedIn
-        ? <SandboxPage setPage={setPage} />
+        ? <SandboxPage />
         : <GatedPreview title={t('Sign in to use the Sandbox')} blurb={t('Free placement, rule highlights, and a step-by-step tutorial — sign in to start experimenting.')}
             features={[t('A 4-step guided tutorial: your first placement, notation, and the step-height rule explained live'), t('Free placement of all 27 figures afterward, with no limits or scoring'), t('Toggleable highlights for every placement rule (support, steps, overhang, return path)')]}
             setPage={setPage}><SandboxPreview /></GatedPreview>)}

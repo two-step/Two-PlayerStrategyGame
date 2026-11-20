@@ -41,6 +41,12 @@ body {
   background: var(--color-stow-blue);
 }
 
+/* Board wrapper (DevTest page, 2026-11-20): the horizontal scrollbar under a container
+   read as a stray bold line under the ruler (thumb painted stow-blue) — boards scroll by
+   wheel/touch/drag, so the bar itself is hidden. */
+.ps-board-wrap { scrollbar-width: none; }
+.ps-board-wrap::-webkit-scrollbar { display: none; }
+
 button:not(:disabled) {
   cursor: pointer;
 }
