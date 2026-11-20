@@ -1,0 +1,102 @@
+# PuzzleStow release automation.
+#
+# Purpose: one-click (or tag-push) build & publish of a playable release.
+#   1. workflow_dispatch — run from the GitHub Actions tab: enter a version
+#      (v-prefixed semver, e.g. v1.0.1); the workflow commits the version bump,
+#      tags it and builds.
+#   2. push of a tag v* — builds directly.
+# Both modes create a GitHub Release with auto-generated notes from commits
+# since the previous tag and attach the production bundle as a zip artifact.
+#
+# Preconditions: repository `two-step/Two-PlayerStrategyGame`; Node 22
+#   (matches .mise.toml); npm ci works offline of local secrets (build does not
+#   require VITE_* secrets — Supabase keys are runtime-only).
+# Postconditions: a GitHub Release `vX.Y.Z` exists with dist zip attached and
+#   the version bump commit on main (workflow_dispatch mode only).
+# Invariants: this workflow never modifies source files other than
+#   package.json/package-lock.json (version bump); it never runs tests here —
+#   quality gates stay in the local session battery (see docs/PUZZLESTOW_STATE).
+
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (v-prefixed semver, e.g. v1.0.1)"
+        required: true
+        type: string
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # src/music/*.mp3 are stored via Git LFS and are imported by the build
+          lfs: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # workflow_dispatch mode: normalize version, bump package.json, commit+tag
+      - name: Version bump (dispatch mode)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          case "$VERSION" in
+            v*) ;;
+            *) VERSION="v$VERSION" ;;
+          esac
+          if ! echo "$VERSION" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::Bad version '$VERSION' — expected v-prefixed semver like v1.0.1"
+            exit 1
+          fi
+          git config user.name "puzzlestow-release-bot"
+          git config user.email "release-bot@puzzlestow.com"
+          npm version "${VERSION#v}" --no-git-tag-version
+          git add package.json package-lock.json
+          git commit -m "release: $VERSION (bump package.json)"
+          git tag "$VERSION"
+          git push origin "HEAD:main" "$VERSION"
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Package dist
+        run: |
+          VERSION="v${GITHUB_REF_NAME#v}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+            case "$VERSION" in v*) ;; *) VERSION="v$VERSION" ;; esac
+          fi
+          cd dist
+          zip -r "../puzzlestow-${VERSION}-dist.zip" .
+          cd ..
+          echo "ARTIFACT=puzzlestow-${VERSION}-dist.zip" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=${VERSION}" >> "$GITHUB_ENV"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$RELEASE_TAG" "$ARTIFACT" \
+            --target "$GITHUB_SHA" \
+            --generate-notes \
+            --title "PuzzleStow $RELEASE_TAG"
