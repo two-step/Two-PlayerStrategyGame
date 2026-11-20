@@ -17,7 +17,7 @@ const figures = src.figures.map((f: any) => ({
   id: f.id, label: `F${String(f.id).padStart(2, '0')}`, cells: f.cells,
   dots: f.reference_dots.map(([r, c]: any) => f.cells.findIndex((p: any) => p[0] === r && p[1] === c)),
 }))
-const byId = (id: number) => figures.find((f) => f.id === id)!
+const byId = (id: number) => figures.find((f: any) => f.id === id)!
 const rules: any = await import(new URL('../../src/engine/rules.ts', import.meta.url).href)
 const cellName = (r: number, c: number) => `${'ABCDEFGHIJK'[10 - r]}${c}`
 
@@ -203,7 +203,7 @@ if (placed11) console.log('   F11 cells:', placed11.map(([r, c]: any) => cellNam
 }
 
 // --- Case 5: engine never picks F17@17C14A12 anymore on that board ---
-import { readFileSync as rf, writeFileSync as wf, mkdirSync as mk, rmSync as rm } from 'node:fs'
+import { writeFileSync as wf, mkdirSync as mk, rmSync as rm } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
 const tmp = resolve('tmp_engine')
@@ -215,7 +215,7 @@ const createOpponentEngine = engMod.createOpponentEngine
 const srcAll = figures
 const used = new Set([25, 16])
 const engine = createOpponentEngine({ difficulty: 'medium' })
-const ctx = { rows: ROWS, ownFilled: board1, ownAvailable: srcAll.filter((f) => !used.has(f.id)), humanFilled: new Set(), humanAvailable: srcAll.filter((f) => !used.has(f.id)) }
+const ctx = { rows: ROWS, ownFilled: board1, ownAvailable: srcAll.filter((f: any) => !used.has(f.id)), humanFilled: new Set(), humanAvailable: srcAll.filter((f: any) => !used.has(f.id)) }
 const d = engine.decidePlacement(byId(17), board1, ROWS, ctx)
 if (d.kind === 'place') {
   const notation = rules.formatNotation(17, byId(17).dots.map((i: number) => ({ r: d.cells[i][0], c: d.cells[i][1] })), ROWS)

@@ -11,7 +11,7 @@ const figures = src.figures.map((f: any) => ({
   id: f.id, label: `F${String(f.id).padStart(2, '0')}`, cells: f.cells,
   dots: f.reference_dots.map(([r, c]: any) => f.cells.findIndex((p: any) => p[0] === r && p[1] === c)),
 }))
-const byId = (id: number) => figures.find((f) => f.id === id)!
+const byId = (id: number) => figures.find((f: any) => f.id === id)!
 const rules: any = await import(new URL('../../src/engine/rules.ts', import.meta.url).href)
 const cellName = (r: number, c: number) => `${'ABCDEFGHIJK'[10 - r]}${c}`
 

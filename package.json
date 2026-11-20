@@ -7,7 +7,14 @@
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "preview": "vite preview",
-    "format": "oxfmt"
+    "format": "oxfmt",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:legacy": "node tests/regressions/regress30.mjs && node tests/regressions/verify30.mjs && node tests/regressions/replay18.mjs && node --experimental-transform-types tests/regressions/endgame44e_check.ts && node --experimental-transform-types tests/regressions/regress31_delivery.ts && node --experimental-transform-types tests/regressions/regress31_exit44d.ts && node --experimental-transform-types tests/regressions/regress31_notation.ts",
+    "test:sim": "node tests/regressions/sim30.mjs",
+    "test:perf": "node tests/regressions/perf30.mjs",
+    "lint": "eslint src tests eslint.config.js vitest.config.ts",
+    "test:coverage:site": "vitest run --coverage --coverage.include=src/**/*.{ts,tsx} --testTimeout=120000 --hookTimeout=120000 --coverage.thresholds.lines=0 --coverage.thresholds.branches=0 --coverage.thresholds.functions=0 --coverage.thresholds.statements=0"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",
@@ -17,14 +24,22 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "^4.0.0",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^6.0.0",
+    "@vitest/coverage-v8": "^5.1.1",
+    "eslint": "^10.15.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.8",
+    "globals": "^17.14.0",
     "oxfmt": "^0.2.0",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.7.0",
-    "vite": "^8.0.0"
+    "typescript-eslint": "^8.73.0",
+    "vite": "^8.0.0",
+    "vitest": "^5.1.1"
   }
 }

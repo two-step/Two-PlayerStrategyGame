@@ -1327,9 +1327,6 @@ function placementLegality(cells: Cells, filled: Set<string>, rows: number, pre:
   return hasReturnPath(nextFilled, rows, cells)
 }
 
-function isEngineLegal(cells: Cells, filled: Set<string>, rows: number, pre?: DeliveryPre): boolean {
-  return placementLegality(cells, filled, rows, pre, 'competent')
-}
 
 // Enumerates the figure's legal placements in orientation order, stopping at
 // `limit` results or as soon as `accept` says "this one is enough".

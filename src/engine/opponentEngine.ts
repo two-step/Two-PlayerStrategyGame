@@ -168,19 +168,6 @@ function applyCells(filled: Set<string>, cells: Cells): Set<string> {
   return next
 }
 
-// Counts open cells that were loader-reachable before the move and are neither filled
-// nor reachable after it — the practical measure of cut-off delivery territory
-// (see TERRITORY_LOSS). reachableCells is memoized per board signature in rules.ts,
-// so the two floods are cheap on the engine's per-candidate path.
-function countStrandedTerritory(before: Set<string>, next: Set<string>, rows: number): number {
-  const reachBefore = reachableCells(before, rows)
-  const reachAfter = reachableCells(next, rows)
-  let stranded = 0
-  for (const spot of reachBefore) {
-    if (!next.has(spot) && !reachAfter.has(spot)) stranded++
-  }
-  return stranded
-}
 
 // Both walk-canon territory deltas from ONE pair of memoized floods (the engine's
 // per-candidate hot path — four floods per candidate cost ~1 s/move on easy).

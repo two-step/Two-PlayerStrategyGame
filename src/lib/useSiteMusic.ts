@@ -113,7 +113,9 @@ export function useSiteMusic(src: string, musicOn: boolean): void {
     audioRef.current = el
   }
   const musicOnRef = useRef(musicOn)
-  musicOnRef.current = musicOn
+  useEffect(() => {
+    musicOnRef.current = musicOn
+  }, [musicOn])
 
   // Main sync effect: pause when off; (re)select src and play when on.
   useEffect(() => {
@@ -142,7 +144,9 @@ export function useSiteMusic(src: string, musicOn: boolean): void {
     return () => window.removeEventListener("pointerdown", retry)
   }, [musicOn, src])
 
-  // Visibility effect: background tabs must not play music.
+  // Visibility effect: background tabs must not play music. The visibilitychange
+  // listener reads the musicOn ref (the event fires outside React's lifecycle),
+  // and the ref is synced in an effect — never during render.
   useEffect(() => {
     const onVisibility = (): void => {
       const el = audioRef.current
@@ -152,7 +156,7 @@ export function useSiteMusic(src: string, musicOn: boolean): void {
     }
     document.addEventListener("visibilitychange", onVisibility)
     return () => document.removeEventListener("visibilitychange", onVisibility)
-  }, [])
+  }, [musicOn])
 
   // Unmount effect: full stop and release (App never unmounts it, but a host
   // environment might).

@@ -104,6 +104,9 @@ export function I18nProvider({ children }: { children: ReactNode }) {
  * Preconditions: component is under an I18nProvider (App root guarantees it).
  * Postconditions: without a provider returns a safe EN fallback (never throws).
  */
+/* eslint-disable react-refresh/only-export-components -- context-file pattern:
+ * the hook shares the module's context object; splitting it into a separate file
+ * would force every consumer to import two paths for one concept. */
 export function useLang(): I18nContextValue {
   return useContext(I18nContext) ?? STATIC_FALLBACK
 }

@@ -16,3 +16,4 @@ logs/
 .codex/
 .vscode/
 tmp_engine/
+coverage/

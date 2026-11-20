@@ -20,9 +20,8 @@ const figures = src.figures.map((f: any) => {
   return { id: f.id, label: `F${String(f.id).padStart(2, '0')}`, cells: f.cells, dots }
 })
 const ROWS = 11
-const LETTERS = 'ABCDEFGHIJK'
 const key = (r: number, c: number) => `${r},${c}`
-const fig = (id: number) => figures.find(f => f.id === id)!
+const fig = (id: number) => figures.find((f: any) => f.id === id)!
 const oppMoves: [number, string][] = [[21, '21B11A9'], [10, '10A5C7'], [7, '07C4B5'], [23, '23B13A11'], [26, '26A4B1'], [4, '04E2B2'], [16, '16E5'], [25, '25F12D10'], [11, '11I4G6'], [27, '27G4F1']]
 const opp = new Set<string>()
 for (const [id, n] of oppMoves) {
