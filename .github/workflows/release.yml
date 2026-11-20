@@ -67,7 +67,7 @@ jobs:
           fi
           git config user.name "puzzlestow-release-bot"
           git config user.email "release-bot@puzzlestow.com"
-          npm version "${VERSION#v}" --no-git-tag-version
+          npm version "${VERSION#v}" --no-git-tag-version --allow-same-version
           git add package.json package-lock.json
           git commit -m "release: $VERSION (bump package.json)"
           git tag "$VERSION"
