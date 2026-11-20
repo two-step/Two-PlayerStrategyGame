@@ -8,7 +8,7 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['tests/unit/**/*.test.ts'],
+    include: ['tests/unit/**/*.test.{ts,tsx}'],
     // Engine decisions may cold-start with memo warmup (~1–2 s first call).
     testTimeout: 30_000,
     hookTimeout: 30_000,

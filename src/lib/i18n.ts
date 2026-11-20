@@ -729,6 +729,17 @@ const DEVTEST: Dict = {
   "Coin flip: opponent goes first.": { ru: "Монета: соперник заходит первым.", be: "Манета: сапернік заходзіць першым." },
   "Game ended — {date} {time} — Final score {y}:{o} — {msg}": { ru: "Партия окончена — {date} {time} — Финальный счёт {y}:{o} — {msg}", be: "Партыя скончана — {date} {time} — Фінальны лік {y}:{o} — {msg}" },
   "Fair-play check ({pct}% unsupported): opponent says \"{msg}\"": { ru: "Fair-play-проверка ({pct}% свеса): соперник отвечает: «{msg}»", be: "Fair-play-праверка ({pct}% звесу): сапернік адказвае: «{msg}»" },
+  "{pct}% unsupported": { ru: "{pct}% свеса", be: "{pct}% звесу" },
+  "Order fair play": { ru: "Запросить fair play", be: "Запытаць fair play" },
+  "order fair play to ask the opponent.": { ru: "запросите fair play, чтобы спросить соперника.", be: "запытайце fair play, каб спытаць саперніка." },
+  "Opponent loses — its last load sealed the way back to the container exit (44d).":
+    { ru: "Соперник проигрывает — его последняя загрузка замуровала путь назад к выходу из контейнера (44d).", be: "Сапернік прайгрывае — яго апошняя загрузка замуравала шлях назад да выхаду з кантэйнера (44d)." },
+  "Download Cut-Out Figures (print, cut, play)":
+    { ru: "Скачать фигуры для вырезания (печать, вырезание, игра)", be: "Спампаваць фігуры для выразання (друк, выразанне, гульня)" },
+  "Free-form key/value pairs for whatever needs parking without a schema change.":
+    { ru: "Свободные пары ключ/значение для всего, что нужно сохранить без изменения схемы.", be: "Вольныя пары ключ/значэнне для ўсяго, што трэба захаваць без змены схемы." },
+  "Items for the news-line ticker. Shown live in the ticker bar under the nav on every page.":
+    { ru: "Сообщения для новостной бегущей строки. Показываются вживую в строке под навигацией на каждой странице.", be: "Паведамленні для навінавай бегучай стракі. Паказваюцца ўжыўую у страку пад навігацыяй на кожнай старонцы." },
   "opponent agreed via fair play. Submit again to confirm.": { ru: "соперник согласился через fair play. Отправьте ещё раз для подтверждения.", be: "сапернік згодзіўся праз fair play. Адпраўце яшчэ раз для пацверджання." },
   "opponent declined fair play. Choose a different placement.": { ru: "соперник отклонил fair play. Выберите другую установку.", be: "сапернік адхіліў fair play. Выберыце іншую ўстаноўку." },
   "{player} — {date} {time} — spent {dur} — placed {fig} at {notation}{closed} — Score {y}:{o}":
