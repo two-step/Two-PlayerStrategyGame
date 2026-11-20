@@ -7,11 +7,20 @@ metadata:
   modified: 2026-11-20T00:00:00.000Z
 ---
 
-# MCP in DeepAI Code — verified working (2026-11-20)
+# MCP in DeepAI Code — working after a long setup (2026-11-20)
 
-DeepAI Code Desktop is **the first client where MCP actually works** for this project
-(past sessions on Claude Code / Copilot never surfaced MCP tools). It embeds the pi
-coding agent via SDK.
+**Sergey's framing:** DeepAI Code is «the first client where MCP took this long to
+set up» — past attempts (Claude Code, Copilot, earlier desktop sessions) never got
+tools to surface; this session finally cracked it after a full day of discovery.
+What was actually wrong, in order:
+
+1. Config was placed in `~/.pi/agent/mcp.json` (the standalone-pi default) — the
+   desktop never reads it (no `mcp.log`, no connections, silent `/mcp`).
+2. PowerShell `Set-Content` added a BOM — pi's JSON parser rejected the file.
+3. Default `codemode` exposure leaves tools unreachable in the desktop —
+   `exposure: "deferred"` makes them visible to `tool_search`.
+
+DeepAI Code Desktop embeds the pi coding agent via SDK.
 
 ## Where the config lives (the key discovery)
 
