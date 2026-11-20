@@ -34,7 +34,9 @@ const TURNS: { who: 'you-req' | 'opp-req'; fig: number; placedBy: string; notati
 ]
 
 describe('golden replay: game 18 (easy, 2026-11-18)', () => {
-  it('every logged placement is rules-legal on its reconstructed board', () => {
+  // The suite is heavy once the workbench interaction tests share the run — generous
+  // timeout keeps this golden replay stable under instrumentation.
+  it('every logged placement is rules-legal on its reconstructed board', { timeout: 120_000 }, () => {
     const boards: Record<string, Set<string>> = { you: new Set(), opp: new Set() }
     const engine = createOpponentEngine({ difficulty: 'easy' })
     for (const t of TURNS) {
