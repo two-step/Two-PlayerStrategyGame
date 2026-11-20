@@ -2973,6 +2973,9 @@ const PP_GRAPHITE: [number, number, number] = [28, 31, 38]
 const PP_STEEL: [number, number, number] = [120, 128, 143]
 
 const CONTAINER_FIGURE_NOTE = 'Note: after drawing a placed figure in the container, write its figure number inside the shape.'
+// Print&Play paper sheets (TO_DO 40): figures drawn on paper MUST carry their number —
+// canonical footnote in Russian (Sergey's wording) plus the English instruction.
+const CONTAINER_PAPER_FOOTNOTE = 'Наличие номера на фигурах при отрисовке обязательно.'
 
 function drawContainerNote(doc: jsPDF, x: number, y: number, maxWidth: number) {
   doc.setFont('helvetica', 'italic')
@@ -2980,6 +2983,10 @@ function drawContainerNote(doc: jsPDF, x: number, y: number, maxWidth: number) {
   doc.setTextColor(...PP_STEEL)
   const lines = doc.splitTextToSize(CONTAINER_FIGURE_NOTE, maxWidth)
   doc.text(lines, x, y)
+  // Separate canonical footnote (TO_DO 40) — Cyrillic renders fine in helvetica.
+  doc.setFont('helvetica', 'bold')
+  doc.setTextColor(...PP_GRAPHITE)
+  doc.text(doc.splitTextToSize(CONTAINER_PAPER_FOOTNOTE, maxWidth), x, y + 12)
 }
 
 function drawContainerGridPdf(doc: jsPDF, x0: number, y0: number, cellPt: number, rows: number, showJKSeparator: boolean) {
@@ -3049,41 +3056,50 @@ function exportContainerTemplatePdf(rows: 10 | 11, showJKSeparator: boolean, nam
 }
 
 function drawFigureCardPdf(doc: jsPDF, fig: Figure, x: number, y: number, cardSize: number) {
-  const cells = fig.cells
-  const rowsArr = cells.map(([r]) => r), colsArr = cells.map(([, c]) => c)
-  const minR = Math.min(...rowsArr), maxR = Math.max(...rowsArr)
-  const minC = Math.min(...colsArr), maxC = Math.max(...colsArr)
-  const numR = maxR - minR + 1, numC = maxC - minC + 1
-  const cellPt = Math.min(cardSize / Math.max(numR, numC), 15)
-  const figW = numC * cellPt, figH = numR * cellPt
+  const b = figureBounds(fig)
+  const cellPt = Math.min(cardSize / Math.max(b.numR, b.numC), 15)
+  const figW = b.numC * cellPt, figH = b.numR * cellPt
   const ox = x + (cardSize - figW) / 2
   const oy = y + (cardSize - figH) / 2
+  drawFigureShapePdf(doc, fig, ox, oy, cellPt)
+  doc.setFont('courier', 'normal')
+  doc.setFontSize(6.5)
+  doc.setTextColor(...PP_STEEL)
+  doc.text(`${fig.label} — ${fig.name}`, x + cardSize / 2, y + cardSize + 9, { align: 'center', maxWidth: cardSize })
+}
 
+// Bounding box of a figure's own-local cells (TO_DO 40 helpers).
+function figureBounds(fig: Figure) {
+  const rowsArr = fig.cells.map(([r]) => r), colsArr = fig.cells.map(([, c]) => c)
+  const numR = Math.max(...rowsArr) - Math.min(...rowsArr) + 1
+  const numC = Math.max(...colsArr) - Math.min(...colsArr) + 1
+  return { numR, numC }
+}
+
+// Figure body at an arbitrary position/scale: outline cells + reference dots + the
+// figure number inside a non-dot cell (TO_DO 40 canon — number and dots travel with
+// the shape in every official material). Cells are local [row, col] from the shape
+// origin; (ox, oy) is where that origin lands on the page.
+function drawFigureShapePdf(doc: jsPDF, fig: Figure, ox: number, oy: number, cellPt: number) {
+  const cells = fig.cells
   doc.setDrawColor(...PP_CYAN)
   doc.setLineWidth(0.6)
   cells.forEach(([r, c]) => {
-    doc.rect(ox + (c - minC) * cellPt, oy + (r - minR) * cellPt, cellPt, cellPt, 'S')
+    doc.rect(ox + c * cellPt, oy + r * cellPt, cellPt, cellPt, 'S')
   })
-
-  const dotSet = new Set(fig.dots)
   doc.setFillColor(...PP_CYAN)
   fig.dots.forEach(idx => {
     const [r, c] = cells[idx]
-    doc.circle(ox + (c - minC) * cellPt + cellPt / 2, oy + (r - minR) * cellPt + cellPt / 2, Math.max(0.8, cellPt * 0.12), 'F')
+    doc.circle(ox + c * cellPt + cellPt / 2, oy + r * cellPt + cellPt / 2, Math.max(0.8, cellPt * 0.12), 'F')
   })
-
+  const dotSet = new Set(fig.dots)
   let labelIdx = cells.findIndex((_, i) => !dotSet.has(i))
   if (labelIdx < 0) labelIdx = 0
   const [lr, lc] = cells[labelIdx]
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(Math.max(5.5, Math.min(cellPt * 0.55, 8)))
   doc.setTextColor(...PP_GRAPHITE)
-  doc.text(String(fig.id), ox + (lc - minC) * cellPt + cellPt / 2, oy + (lr - minR) * cellPt + cellPt / 2 + 2, { align: 'center' })
-
-  doc.setFont('courier', 'normal')
-  doc.setFontSize(6.5)
-  doc.setTextColor(...PP_STEEL)
-  doc.text(`${fig.label} — ${fig.name}`, x + cardSize / 2, y + cardSize + 9, { align: 'center', maxWidth: cardSize })
+  doc.text(String(fig.id), ox + lc * cellPt + cellPt / 2, oy + lr * cellPt + cellPt / 2 + 2, { align: 'center' })
 }
 
 function drawFigureReferenceSheet(doc: jsPDF, startY: number) {
@@ -3092,12 +3108,15 @@ function drawFigureReferenceSheet(doc: jsPDF, startY: number) {
   const pageH = doc.internal.pageSize.getHeight()
   doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(...PP_BLUE)
   doc.text('Figure Reference — All 27 Figures', margin, startY)
+  // TO_DO 40: the reference sheet is an official printout — state the numbering canon on it.
+  doc.setFont('helvetica', 'italic'); doc.setFontSize(8.5); doc.setTextColor(...PP_STEEL)
+  doc.text('Every figure carries its number and reference dots on the shape. When drawing figures on paper, writing the figure number inside the shape is mandatory.', margin, startY + 14, { maxWidth: pageW - 2 * margin })
 
   const cols = 6
   const gap = 10
   const cardSize = (pageW - 2 * margin - (cols - 1) * gap) / cols
   const rowH = cardSize + 24
-  let x = margin, y = startY + 26, col = 0
+  let x = margin, y = startY + 40, col = 0
 
   FIGURES.forEach(fig => {
     if (y + cardSize + 20 > pageH - 40) {
@@ -3110,6 +3129,66 @@ function drawFigureReferenceSheet(doc: jsPDF, startY: number) {
     col++
     if (col >= cols) { col = 0; x = margin; y += rowH } else { x += cardSize + gap }
   })
+}
+
+// TO_DO 40 (Sergey): figures are used both drawn inside the container and as
+// cut-out tokens. This sheet prints all 27 figures at the container template's cell
+// scale (≈20 pt) with dashed cut lines; every token carries its number and reference
+// dots, so it can be placed into a printed grid or read as notation directly.
+function exportCutOutFiguresPdf() {
+  const doc = new jsPDF({ unit: 'pt', format: 'a4' })
+  drawCutOutFiguresSheet(doc, 40, doc.internal.pageSize.getWidth(), doc.internal.pageSize.getHeight())
+  doc.save('PuzzleStow_CutOut_Figures.pdf')
+}
+
+// Paints the cut-out sheet (possibly several pages) into an existing document — used
+// both standalone and as the last section of the Complete Pack.
+function drawCutOutFiguresSheet(doc: jsPDF, margin: number, pageW: number, pageH: number) {
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(18); doc.setTextColor(...PP_BLUE)
+  doc.text('PUZZLESTOW', margin, 50)
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(12); doc.setTextColor(...PP_GRAPHITE)
+  doc.text('Print & Play — Cut-Out Figures (all 27)', margin, 68)
+  doc.setFont('helvetica', 'italic'); doc.setFontSize(9); doc.setTextColor(...PP_STEEL)
+  doc.text('Cut along the dashed lines. Every token carries its figure number and reference dots.', margin, 84)
+  doc.text('Tokens are printed at the container cell scale — place them straight into the printed grids.', margin, 97)
+  doc.setFont('helvetica', 'bold'); doc.setTextColor(...PP_GRAPHITE)
+  doc.text(CONTAINER_PAPER_FOOTNOTE, margin, 112)
+
+  const cellPt = 20
+  const cardSize = 4 * cellPt + 28
+  const cols = 4
+  const gap = 12
+  const rowH = cardSize + 16
+  let x = margin, y = 134, col = 0
+
+  FIGURES.forEach(fig => {
+    if (y + cardSize + 14 > pageH - 40) {
+      doc.addPage()
+      y = 50
+      x = margin
+      col = 0
+    }
+    drawCutOutCardPdf(doc, fig, x, y, cardSize, cellPt)
+    col++
+    if (col >= cols) { col = 0; x = margin; y += rowH } else { x += cardSize + gap }
+  })
+}
+
+// One cut-out token: dashed cut border, figure centered at the given cell scale,
+// catalogue label under the token.
+function drawCutOutCardPdf(doc: jsPDF, fig: Figure, x: number, y: number, cardSize: number, cellPt: number) {
+  const b = figureBounds(fig)
+  const figW = b.numC * cellPt, figH = b.numR * cellPt
+  doc.setDrawColor(...PP_GRAPHITE)
+  doc.setLineWidth(0.5)
+  doc.setLineDashPattern([2.5, 2.5], 0)
+  doc.roundedRect(x, y, cardSize, cardSize, 3, 3, 'S')
+  doc.setLineDashPattern([], 0)
+  drawFigureShapePdf(doc, fig, x + (cardSize - figW) / 2, y + (cardSize - figH) / 2, cellPt)
+  doc.setFont('courier', 'normal')
+  doc.setFontSize(6.5)
+  doc.setTextColor(...PP_STEEL)
+  doc.text(`${fig.label} — ${fig.name}`, x + cardSize / 2, y + cardSize + 10, { align: 'center', maxWidth: cardSize })
 }
 
 function exportCompletePackPdf() {
@@ -3164,6 +3243,11 @@ function exportCompletePackPdf() {
 
   doc.addPage()
   drawFigureReferenceSheet(doc, 50)
+
+  // TO_DO 40: the pack carries the figures in both official uses — drawn (reference
+  // sheet above) and cut-out (token sheet below).
+  doc.addPage()
+  drawCutOutFiguresSheet(doc, margin, pageW, doc.internal.pageSize.getHeight())
 
   doc.save('PuzzleStow_PrintPlay_Complete_Pack.pdf')
 }
@@ -3234,11 +3318,18 @@ function PrintPlayPage() {
               </div>
             ))}
           </div>
-          <button onClick={exportCompletePackPdf}
-            style={{ background: C.blue, color: C.deck, fontWeight: 600, fontSize: 13, padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', border: 'none' }}>
-            <svg width={14} height={14} fill="none" stroke="currentColor" strokeWidth={2}><path d="M7 2v8M3 7l4 4 4-4M2 11h10v2H2z"/></svg>
-            {t('Download Complete Pack (Rules + Both Templates + Figures)')}
-          </button>
+          <div className="flex flex-wrap gap-3">
+            <button onClick={exportCompletePackPdf}
+              style={{ background: C.blue, color: C.deck, fontWeight: 600, fontSize: 13, padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', border: 'none' }}>
+              <svg width={14} height={14} fill="none" stroke="currentColor" strokeWidth={2}><path d="M7 2v8M3 7l4 4 4-4M2 11h10v2H2z"/></svg>
+              {t('Download Complete Pack (Rules + Both Templates + Figures)')}
+            </button>
+            <button onClick={exportCutOutFiguresPdf}
+              style={{ background: C.cyan, color: C.graphite, fontWeight: 600, fontSize: 13, padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', border: 'none' }}>
+              <svg width={14} height={14} fill="none" stroke="currentColor" strokeWidth={2}><path d="M7 2v8M3 7l4 4 4-4M2 11h10v2H2z"/></svg>
+              {t('Download Cut-Out Figures (print, cut, play)')}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -4185,6 +4276,9 @@ function DevTestPage() {
     doc.setTextColor(...STEEL)
     const generatedAt = Date.now()
     doc.text(`Generated ${logDate(generatedAt)} ${logTime(generatedAt)} — local engine only, not the server-authoritative record.`, margin, finalY + 22)
+    // TO_DO 40: official document — spell out where the figure number and the two
+    // reference dots live in the notation.
+    doc.text('Notation: [2-digit figure number][dot1 row][dot1 col][dot2 row][dot2 col] — dot1/dot2 are the reference dots printed on the figure.', margin, finalY + 36)
 
     const filenameDate = gameStartInfo?.date ?? logDate(generatedAt)
     doc.save(`PuzzleStow_Game_Report_${filenameDate}.pdf`)
