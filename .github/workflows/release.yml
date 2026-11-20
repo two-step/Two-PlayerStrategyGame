@@ -83,12 +83,13 @@ jobs:
           git push origin "$VERSION"
 
       - name: Install
-        # npm ci is deliberately NOT used: the lockfile was generated on Windows,
-        # and npm omits cross-platform optional deps (rolldown native bindings)
-        # from it — npm ci on Linux then fails with "Cannot find module
-        # rolldown-binding.linux-x64-gnu.node". npm install resolves the
-        # platform-specific optionals on the runner.
-        run: npm install --no-audit --no-fund
+        # npm ci works because package-lock.json includes the cross-platform
+        # optional deps (regenerated with: npm install --cpu=x64 --os=linux
+        # --libc=glibc so the rolldown/esbuild native bindings are recorded for
+        # every platform — npm/cli#4828 workaround). Do NOT regenerate the
+        # lockfile on Windows without those flags: npm ci on Linux would fail
+        # with "Cannot find rolldown-binding.linux-x64-gnu.node".
+        run: npm ci
 
       - name: Build
         run: npm run build
