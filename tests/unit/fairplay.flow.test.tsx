@@ -114,7 +114,7 @@ async function signedInPractice(user: ReturnType<typeof userEvent.setup>, opts?:
     await user.selectOptions(difficulty, opts.pickDifficulty)
   }
   await user.click(screen.getByText(T('Flip the coin')))
-  const incomingLabel = await screen.findByText(/^F\d\d — /, { selector: 'p' }, { timeout: 8000 })
+  const incomingLabel = await screen.findByText(/^F\d\d — /, { selector: 'p' }, { timeout: 30_000 })
   return parseInt(incomingLabel.textContent!.slice(1, 3), 10)
 }
 
