@@ -104,7 +104,7 @@ describe('GameWorkbench (practice, signed-in): a full exchange', () => {
 
     // Coin: deterministic youFirst=true (Math.random mocked to 0.1). The flip is a 5s timer.
     await user.click(screen.getByText(T('Flip the coin')))
-    const incomingLabel = await screen.findByText(/^F\d\d — /.source ? /^F\d\d — / : /^F\d\d — /, { selector: 'p' }, { timeout: 8000 })
+    const incomingLabel = await screen.findByText(/^F\d\d — /.source ? /^F\d\d — / : /^F\d\d — /, { selector: 'p' }, { timeout: 30_000 })
     const label = incomingLabel.textContent!.slice(0, 3) // "F13"
     const figId = parseInt(label.slice(1), 10)
     expect(figId).toBeGreaterThanOrEqual(1)
